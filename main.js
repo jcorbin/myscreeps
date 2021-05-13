@@ -1,40 +1,37 @@
 module.exports = {
     loop() {
-        // TODO forget
-        // TODO reap
-        this.spawnCreeps();
-        this.runCreeps();
-    },
-    
-    spawnCreeps() {
         for (const room of Object.values(Game.rooms)) {
-            const spawns = room.find(FIND_MY_SPAWNS).filter(spawn => !spawn.spawning);
-            if (!spawns.length) continue;
-            const spawn = spawns[0]; // TODO better selection
-            const creeps = room.find(FIND_MY_CREEPS);
-            if (room.energyAvailable < 300 ||
-                (creeps.length < 2 && room.energyAvailable < room.energyCapacityAvailable
-            )) continue;
-            const partCost = 100;
-            const maxParts = Math.floor(room.energyAvailable / partCost);
-            // TODO specialization / design
-            const parts = [WORK, CARRY, MOVE];
-            for (let i=0, more=[MOVE, WORK, MOVE, CARRY]; parts.length < maxParts; i++)
-                parts.unshift(more[i % more.length]);
-            const newName = 'Worker' + Game.time;
-            const res = spawn.spawnCreep(parts, newName);
-            if (res == OK) console.log('spawning', spawn.name, newName, parts);
-            else console.log('cannot spawn', spawn.name, parts, res);
+            // TODO reap
+            this.spawnCreepsIn(room);
         }
-    },
-    
-    runCreeps() {
+
         for (const creep of Object.values(Game.creeps)) {
-            if (creep.spawning) continue;
             this.runCreep(creep);
         }
+
+        // TODO forget
     },
-    
+
+    spawnCreepsIn(room) {
+        const spawns = room.find(FIND_MY_SPAWNS).filter(spawn => !spawn.spawning);
+        if (!spawns.length) continue;
+        const spawn = spawns[0]; // TODO better selection
+        const creeps = room.find(FIND_MY_CREEPS);
+        if (room.energyAvailable < 300 ||
+            (creeps.length < 2 && room.energyAvailable < room.energyCapacityAvailable
+        )) continue;
+        const partCost = 100;
+        const maxParts = Math.floor(room.energyAvailable / partCost);
+        // TODO specialization / design
+        const parts = [WORK, CARRY, MOVE];
+        for (let i=0, more=[MOVE, WORK, MOVE, CARRY]; parts.length < maxParts; i++)
+            parts.unshift(more[i % more.length]);
+        const newName = 'Worker' + Game.time;
+        const res = spawn.spawnCreep(parts, newName);
+        if (res == OK) console.log('spawning', spawn.name, newName, parts);
+        else console.log('cannot spawn', spawn.name, parts, res);
+    },
+
     manageCreep(creep) {
         if (creep.getActiveBodyparts(CARRY) > 0) {
             if (creep.store.getUsedCapacity(RESOURCE_ENERGY)) {
@@ -70,6 +67,8 @@ module.exports = {
     },
 
     runCreep(creep) {
+        if (creep.spawning) return;
+
         if (!creep.memory.job) {
             const job = this.manageCreep(creep);
             if (!job) return;
