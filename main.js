@@ -28,8 +28,8 @@ module.exports = {
             parts.unshift(more[i % more.length]);
         const newName = 'Worker' + Game.time;
         const res = spawn.spawnCreep(parts, newName);
-        if (res == OK) console.log('spawning', spawn.name, newName, parts);
-        else console.log('cannot spawn', spawn.name, parts, res);
+        if (res == OK) logSpawn('⨁', spawn.name, parts, newName);
+        else logSpawn('⚠️', spawn.name, parts, newName, res);
     },
 
     manageCreep(creep) {
@@ -73,7 +73,7 @@ module.exports = {
             const job = this.manageCreep(creep);
             if (!job) return;
             creep.memory.job = job;
-            // console.log('🙋', creep.name, JSON.stringify(job));
+            // logCreep('🙋', creep.name, JSON.stringify(job));
         }
         
         const job = creep.memory.job;
@@ -101,7 +101,15 @@ module.exports = {
             }
         }
         
-        if (job.res != OK) console.log('🤔', creep.name, JSON.stringify(job));
+        if (job.res != OK) logCreep('🤔', creep.name, JSON.stringify(job));
         delete creep.memory.job;
     },
+}
+
+function logSpawn(mark, name, ...mess) { log(mark, 'Spawns', name, ...mess); }
+function logCreep(mark, name, ...mess) { log(mark, 'Creeps', name, ...mess); }
+
+function log(mark, kind, name, ...mess) {
+    // TODO collect entry alongside tick events?
+    console.log(`T${Game.time} ${mark} ${kind}.${name}`, ...mess);
 }
