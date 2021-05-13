@@ -1,7 +1,8 @@
 module.exports = {
     loop() {
         for (const room of Object.values(Game.rooms)) {
-            // TODO reap
+            // TODO collect room.getEventLog
+            this.reapCreepsIn(room);
             this.spawnCreepsIn(room);
         }
 
@@ -16,6 +17,11 @@ module.exports = {
         }
         // TODO forget spawns
         // TODO forget rooms?
+        // forget notes once their object is gone
+        for (const id of Object.keys(Memory.notes)) {
+            if (!Game.getObjectById(id))
+                delete Memory.notes[id];
+        }
     },
 
     spawnCreepsIn(room) {
@@ -36,6 +42,16 @@ module.exports = {
         const res = spawn.spawnCreep(parts, newName);
         if (res == OK) logSpawn('⨁', spawn.name, parts, newName);
         else logSpawn('⚠️', spawn.name, parts, newName, res);
+    },
+
+    reapCreepsIn(room) {
+        for (const {id, creep, deathTime} of room.find(FIND_TOMBSTONES)) {
+            if (!creep.my) continue;
+            if (note(id)) {
+                this.reapCreep(creep, deathTime);
+                // TODO post a room job to collect any storage within ticksToDecay
+            }
+        }
     },
 
     manageCreep(creep) {
@@ -129,12 +145,46 @@ module.exports = {
         return {ok: true, reason: `code ${err} (final)`};
     },
 
+    reapCreep(creep, deathTime) {
+        // TODO use deathTime to explain death from room.getEventLog collection
+        // TODO provide evolution feedback
+        const {name, body} = creep;
+        const partCounts = Array.from(uniq(
+            body
+                .map(({type}) => type)
+                .sort()
+        ));
+        const mem = Memory.creeps[name];
+        delete Memory.creeps[name];
+        logCreep('💀', name, JSON.stringify({deathTime, partCounts, mem}));
+    },
+
     forgetCreep(name, mem=Memory.creeps[name]) {
         delete Memory.creeps[name];
         logCreep('👻', name, JSON.stringify(mem));
     },
 
 };
+
+if (Memory.notes == null) Memory.notes = {};
+
+function* uniq(tokens) {
+    let last = '', n = 0;
+    for (const token of tokens) {
+        if (token !== last) {
+            if (n > 1) yield n;
+            yield last = token;
+            n = 1;
+        } else n++;
+    }
+    if (n > 1) yield n;
+}
+
+function note(id) {
+    if (Memory.notes[id] != null) return false;
+    Memory.notes[id] = Game.time;
+    return true;
+}
 
 function logSpawn(mark, name, ...mess) { log(mark, 'Spawns', name, ...mess); }
 function logCreep(mark, name, ...mess) { log(mark, 'Creeps', name, ...mess); }
