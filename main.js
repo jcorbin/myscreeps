@@ -9,7 +9,13 @@ module.exports = {
             this.runCreep(creep);
         }
 
-        // TODO forget
+        // forget any creeps that we didn't reap above
+        for (const [name, mem] of Object.entries(Memory.creeps)) {
+            if (!Game.creeps[name])
+                this.forgetCreep(name, mem);
+        }
+        // TODO forget spawns
+        // TODO forget rooms?
     },
 
     spawnCreepsIn(room) {
@@ -121,6 +127,11 @@ module.exports = {
         ) return null;
 
         return {ok: true, reason: `code ${err} (final)`};
+    },
+
+    forgetCreep(name, mem=Memory.creeps[name]) {
+        delete Memory.creeps[name];
+        logCreep('👻', name, JSON.stringify(mem));
     },
 
 };
