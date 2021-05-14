@@ -68,43 +68,62 @@ module.exports = {
 
     runCreep(creep) {
         if (creep.spawning) return;
-
-        if (!creep.memory.job) {
-            const job = this.manageCreep(creep);
-            if (!job) return;
-            creep.memory.job = job;
-            // logCreep('🙋', creep.name, JSON.stringify(job));
+        let job = creep.memory.job;
+        if (!job) job = this.manageCreep(creep);
+        if (!job) return;
+        creep.memory.job = job;
+        // logCreep('🙋', creep.name, JSON.stringify(job));
+        const res = this.runCreepJob(creep, job);
+        if (res == null) return;
+        if (!res.ok) {
+            logCreep('🤔', creep.name, res.reason, JSON.stringify(job));
         }
-        
-        const job = creep.memory.job;
-        if (job.do) {
-            const fun = creep[job.do];
-            const target = Game.getObjectById(job.targetId);
-            if (!target) {
-                job.res = ERR_INVALID_TARGET;
-            } else if (typeof fun == 'function') {
-                let res = fun.call(creep, target, ...(job.extra || []));
-                if (res == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(target);
-                    return;
-                } else if (job.repeat) {
-                    if (res == OK) {
-                        if (job.repeat.untilFull != null &&
-                            creep.store.getFreeCapacity(job.repeat.untilFull) > 0
-                        ) return;
-                        if (job.repeat.untilEmpty != null &&
-                            creep.store.getUsedCapacity(job.repeat.untilEmpty) > 0
-                        ) return;
-                    } else if (res == job.repeat.untilErr) res = OK;
-                }
-                job.res = res;
-            }
-        }
-        
-        if (job.res != OK) logCreep('🤔', creep.name, JSON.stringify(job));
+        // TODO collect management data
         delete creep.memory.job;
     },
-}
+
+    runCreepJob(creep, job) {
+        if (job.do) return this.doCreepJob(creep, job);
+
+        return {ok: false, reason: 'invalid creep job'};
+    },
+
+    doCreepJob(creep, job) {
+        const fun = creep[job.do];
+        if (typeof fun != 'function') {
+            return {ok: false, reason: 'invalid creep function'};
+        }
+
+        const target = Game.getObjectById(job.targetId);
+        if (!target) {
+            return {ok: false, reason: 'target gone'};
+        }
+
+        let err = fun.call(creep, target, ...(job.extra || []));
+        // TODO other forms of pre-error handling
+        if (err == ERR_NOT_IN_RANGE) {
+            creep.moveTo(target);
+            return null;
+        }
+
+        if (err != OK || !job.repeat) {
+            const expected = job.repeat && job.repeat.untilErr;
+            const ok = err === OK || err === expected;
+            return {ok, reason: `code ${err}`};
+        }
+
+        if (job.repeat.untilFull != null &&
+            creep.store.getFreeCapacity(job.repeat.untilFull) > 0
+        ) return null;
+
+        if (job.repeat.untilEmpty != null &&
+            creep.store.getUsedCapacity(job.repeat.untilEmpty) > 0
+        ) return null;
+
+        return {ok: true, reason: `code ${err} (final)`};
+    },
+
+};
 
 function logSpawn(mark, name, ...mess) { log(mark, 'Spawns', name, ...mess); }
 function logCreep(mark, name, ...mess) { log(mark, 'Creeps', name, ...mess); }
