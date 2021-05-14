@@ -1,3 +1,5 @@
+const wanderFor = 10;
+
 module.exports = {
     loop() {
         for (const room of Object.values(Game.rooms)) {
@@ -64,14 +66,25 @@ module.exports = {
         const res = this.runCreepTask(creep, task);
         if (res == null) return;
         if (!res.ok) {
-            logCreep('🤔', creep.name, res.reason, JSON.stringify(task));
+            if (res.deadline != null) {
+                logCreep('⏰', creep.name, res.reason, JSON.stringify(task), `deadline: T${res.deadline}`);
+            } else {
+                logCreep('🤔', creep.name, res.reason, JSON.stringify(task));
+            }
         }
         // TODO collect management data
         delete creep.memory.task;
     },
 
     runCreepTask(creep, task) {
+        const {deadline} = task;
+        if (deadline != null && deadline < Game.time) {
+            return {ok: false, reason: 'deadline expired', deadline};
+        }
+
+        if (!task.wander) delete creep.memory.wanderingFor;
         if (task.do) return this.doCreepTask(creep, task);
+        if (task.wander) return this.wanderCreep(creep);
 
         return {ok: false, reason: 'invalid creep task'};
     },
@@ -111,6 +124,33 @@ module.exports = {
         return {ok: true, reason: `code ${err} (final)`};
     },
 
+    wanderCreep(creep) {
+        const wanderingFor = (creep.memory.wanderingFor || 0) + 1;
+        creep.memory.wanderingFor = wanderingFor;
+        if (wanderingFor >= 2*wanderFor) {
+            this.disposeCreep(creep, `wandered for ${wanderingFor} ticks`);
+            return null;
+        }
+
+        const directions = [
+            TOP,
+            TOP_RIGHT,
+            RIGHT,
+            BOTTOM_RIGHT,
+            BOTTOM,
+            BOTTOM_LEFT,
+            LEFT,
+            TOP_LEFT,
+        ];
+        const err = creep.move(directions[Math.floor(Math.random() * directions.length)]);
+        if (err === OK) return null; // keep going until deadline
+        if (err === ERR_NO_BODYPART) {
+            this.killCreep(creep, 'unable to move');
+            return null; // leave task on zombie
+        }
+        return {ok: false, reason: `code: ${err}`};
+    },
+
     reapCreep(creep, deathTime) {
         // TODO use deathTime to explain death from room.getEventLog collection
         // TODO provide evolution feedback
@@ -134,7 +174,12 @@ module.exports = {
         for (const choice of bestChoice(this.availableCreepTasks(creep))) {
             return {assignTime: Game.time, ...choice};
         }
-        return null;
+        const forTicks = wanderFor * (0.5 + Math.random());
+        return {
+            assignTime: Game.time,
+            wander: true,
+            deadline: Game.time + forTicks,
+        };
     },
 
     *availableCreepTasks(creep) {
@@ -210,6 +255,20 @@ module.exports = {
         }
 
         // TODO other modalities like heal and attack
+    },
+
+    disposeCreep(creep, reason) {
+        // TODO task to recycle at nearest spawn
+        this.killCreep(creep, reason);
+    },
+
+    killCreep(creep, reason) {
+        const err = creep.suicide();
+        if (err === OK) {
+            logCreep('☠️', creep.name, reason);
+        } else {
+            logCreep('⚠️', creep.name, `suicide failed code: ${err}; reason: ${reason}`);
+        }
     },
 
 };
