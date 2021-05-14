@@ -151,15 +151,19 @@ module.exports = {
             // TODO spawns
             // TODO extensions
             const ctl = creep.room.controller;
-            if (ctl && ctl.my && !ctl.upgradeBlocked) yield {
-                score: scoreContrib(haveEnergy, ctl.progress, ctl.progressTotal),
-                do: 'upgradeController',
-                targetId: ctl.id,
-                repeat: {
-                    untilEmpty: RESOURCE_ENERGY,
-                    untilErr: ERR_NOT_ENOUGH_RESOURCES,
-                },
-            };
+            if (ctl && ctl.my && !ctl.upgradeBlocked) {
+                const contribScore = scoreContrib(haveEnergy, ctl.progress, ctl.progressTotal);
+                const iqScore = inverseQuadScore(ctl.ticksToDowngrade, creep.pos, ctl.pos);
+                yield {
+                    score: Math.max(contribScore, iqScore),
+                    do: 'upgradeController',
+                    targetId: ctl.id,
+                    repeat: {
+                        untilEmpty: RESOURCE_ENERGY,
+                        untilErr: ERR_NOT_ENOUGH_RESOURCES,
+                    },
+                };
+            }
         }
 
         const canCarry = creep.getActiveBodyparts(CARRY) > 0;
@@ -241,6 +245,14 @@ function log(mark, kind, name, ...mess) {
 function normalScore(measure, min, max) {
     const p = (measure - min) / (max - min);
     return Math.max(0, Math.min(1, p));
+}
+
+function inverseQuadScore(measure, a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    const quad = dx * dx + dy * dy;
+    if (measure > quad) return 0;
+    return 1 - normalScore(measure, Math.sqrt(quad), quad);
 }
 
 function *bestChoice(choices) {
