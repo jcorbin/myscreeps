@@ -54,45 +54,11 @@ module.exports = {
         }
     },
 
-    manageCreep(creep) {
-        if (creep.getActiveBodyparts(CARRY) > 0) {
-            if (creep.store.getUsedCapacity(RESOURCE_ENERGY)) {
-                return {
-                    do: 'upgradeController',
-                    targetId: creep.room.controller.id,
-                    repeat: {
-                        untilEmpty: RESOURCE_ENERGY,
-                        untilErr: ERR_NOT_ENOUGH_RESOURCES,
-                    },
-                };
-            }
-
-            // TODO other resources
-        }
-
-        // TODO if we have full store, what to do
-
-        const dropped = creep.pos.findClosestByRange(FIND_DROPPED_RESOURCES);
-        if (dropped &&
-            creep.store.getFreeCapacity(dropped.resourceType) > dropped.amount
-        ) return {do: 'pickup', targetId: dropped.id};
-
-        if (creep.getActiveBodyparts(WORK) > 0) {
-            if (creep.getActiveBodyparts(CARRY) > 0 && creep.store.getFreeCapacity(RESOURCE_ENERGY) == 0) return null; // TODO above should prevent this
-            const source = creep.pos.findClosestByRange(FIND_SOURCES_ACTIVE);
-            if (source) return {
-                do: 'harvest',
-                targetId: source.id,
-                repeat: {untilFull: RESOURCE_ENERGY},
-            };
-        }
-    },
-
     runCreep(creep) {
         if (creep.spawning) return;
         let task = creep.memory.task;
-        if (!task) task = this.manageCreep(creep);
         if (!task) return;
+        if (!task) task = this.assignCreep(creep);
         creep.memory.task = task;
         // logCreep('🙋', creep.name, JSON.stringify(task));
         const res = this.runCreepTask(creep, task);
@@ -164,6 +130,74 @@ module.exports = {
         logCreep('👻', name, JSON.stringify(mem));
     },
 
+    assignCreep(creep) {
+        for (const choice of bestChoice(this.availableCreepTasks(creep))) {
+            return {assignTime: Game.time, ...choice};
+        }
+        return null;
+    },
+
+    *availableCreepTasks(creep) {
+        const contribMin = 0.05;
+        const contribMax = 0.25;
+        function scoreContrib(have, progress, total) {
+            const remain = total - progress;
+            const contribP = have / remain;
+            return normalScore(contribP, contribMin, contribMax);
+        }
+
+        const haveEnergy = creep.store.getUsedCapacity(RESOURCE_ENERGY);
+        if (haveEnergy) {
+            // TODO spawns
+            // TODO extensions
+            const ctl = creep.room.controller;
+            if (ctl && ctl.my && !ctl.upgradeBlocked) yield {
+                score: scoreContrib(haveEnergy, ctl.progress, ctl.progressTotal),
+                do: 'upgradeController',
+                targetId: ctl.id,
+                repeat: {
+                    untilEmpty: RESOURCE_ENERGY,
+                    untilErr: ERR_NOT_ENOUGH_RESOURCES,
+                },
+            };
+        }
+
+        const canCarry = creep.getActiveBodyparts(CARRY) > 0;
+        if (canCarry) {
+            const dropped = creep.pos.findClosestByRange(FIND_DROPPED_RESOURCES);
+            if (dropped &&
+                creep.store.getFreeCapacity(dropped.resourceType) > dropped.amount
+            ) yield {
+                score: 0.5, // TODO take distance / decay into account
+                do: 'pickup',
+                targetId: dropped.id,
+            };
+            // TODO transfer from tombstones
+            // TODO it's always an option to put things in storage or to drop them
+        }
+
+        const canWork = creep.getActiveBodyparts(WORK) > 0;
+        if (canWork) {
+            // TODO build things
+
+            if (canCarry && creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+                // TODO rank all sources
+                const source = creep.pos.findClosestByRange(FIND_SOURCES_ACTIVE);
+                if (source) yield {
+                    score: 0.4, // TODO factor in availability
+                    do: 'harvest',
+                    targetId: source.id,
+                    repeat: {untilFull: RESOURCE_ENERGY},
+                };
+            }
+
+            // TODO harvest minerals
+            // TODO other worker tasks like repair
+        }
+
+        // TODO other modalities like heal and attack
+    },
+
 };
 
 if (Memory.notes == null) Memory.notes = {};
@@ -192,4 +226,22 @@ function logCreep(mark, name, ...mess) { log(mark, 'Creeps', name, ...mess); }
 function log(mark, kind, name, ...mess) {
     // TODO collect entry alongside tick events?
     console.log(`T${Game.time} ${mark} ${kind}.${name}`, ...mess);
+}
+
+function normalScore(measure, min, max) {
+    const p = (measure - min) / (max - min);
+    return Math.max(0, Math.min(1, p));
+}
+
+function *bestChoice(choices) {
+    // TODO heap select top N
+    let best = null;
+    for (const choice of choices) {
+        const score = choice.score || 0;
+        const prior = best && best.score;
+        if (score > prior || typeof prior != 'number' || isNaN(prior)) {
+            best = choice;
+        }
+    }
+    if (best) yield best;
 }
