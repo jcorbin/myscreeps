@@ -178,7 +178,17 @@ module.exports = {
 
         const canWork = creep.getActiveBodyparts(WORK) > 0;
         if (canWork) {
-            // TODO build things
+            if (haveEnergy) {
+                for (const site of creep.room.find(FIND_CONSTRUCTION_SITES)) yield {
+                    score: scoreContrib(haveEnergy, site.progress, site.progressTotal), // TODO penalize distance?
+                    do: 'build',
+                    targetId: site.id,
+                    repeat: {
+                        untilEmpty: RESOURCE_ENERGY,
+                        untilErr: ERR_NOT_ENOUGH_RESOURCES,
+                    },
+                };
+            }
 
             if (canCarry && creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
                 // TODO rank all sources
