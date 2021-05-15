@@ -11,21 +11,48 @@ const fromEntries = Object.fromEntries || function fromEntries(entries) {
 };
 
 module.exports = {
+    findCache: null,
+
+    *find(room, ...types) {
+        for (const type of types) {
+            const cached =
+                this.findCache &&
+                this.findCache[room.name] &&
+                this.findCache[room.name][type];
+            if (cached) {
+                yield* cached
+                return;
+            }
+
+            const res = room.find(type);
+            if (this.findCache) {
+                if (!this.findCache[room.name]) {
+                    this.findCache[room.name] = {};
+                }
+                this.findCache[room.name][type] = res
+            }
+            yield* res;
+        }
+    },
+
     loop() {
+        const self = Object.create(this);
+        self.findCache = {};
+
         for (const room of Object.values(Game.rooms)) {
             // TODO collect room.getEventLog
-            this.reapCreepsIn(room);
-            this.spawnCreepsIn(room);
+            self.reapCreepsIn(room);
+            self.spawnCreepsIn(room);
         }
 
         for (const creep of Object.values(Game.creeps)) {
-            this.runCreep(creep);
+            self.runCreep(creep);
         }
 
         // forget any creeps that we didn't reap above
         for (const [name, mem] of Object.entries(Memory.creeps)) {
             if (!Game.creeps[name])
-                this.forgetCreep(name, mem);
+                self.forgetCreep(name, mem);
         }
         // TODO forget spawns
         // TODO forget rooms?
@@ -49,7 +76,7 @@ module.exports = {
     },
 
     reapCreepsIn(room) {
-        for (const {id, creep, deathTime} of room.find(FIND_TOMBSTONES)) {
+        for (const {id, creep, deathTime} of this.find(room, FIND_TOMBSTONES)) {
             if (!creep.my) continue;
             if (note(id)) {
                 this.reapCreep(creep, deathTime);
@@ -59,10 +86,7 @@ module.exports = {
     },
 
     *designCreepsIn(room) {
-
-        let roomCreeps = null;
-
-        for (const spawn of room.find(FIND_MY_SPAWNS)) {
+        for (const spawn of this.find(room, FIND_MY_SPAWNS)) {
             if (spawn.spawning) continue;
 
             const plan = energy => {
@@ -90,8 +114,7 @@ module.exports = {
             const progressScore = normalScore(progress, minSpawnProgressP, 1);
 
             // TODO factor capability novelty, demand, (dis)advantage vs peers
-            if (!roomCreeps) roomCreeps = room.find(FIND_MY_CREEPS);
-            const vsScore = (roomCreeps.length < minRoomCreeps) ? 1 : 0;
+            const vsScore = (Array.from(this.find(room, FIND_MY_CREEPS)).length < minRoomCreeps) ? 1 : 0;
 
             // TODO factor in estimated wait time
             // TODO factor in spawn preference/advantage
@@ -338,7 +361,7 @@ module.exports = {
         const canWork = creep.getActiveBodyparts(WORK) > 0;
         if (canWork) {
             if (haveEnergy) {
-                for (const site of creep.room.find(FIND_CONSTRUCTION_SITES)) yield {
+                for (const site of this.find(creep.room, FIND_CONSTRUCTION_SITES)) yield {
                     score: scoreContrib(haveEnergy, site.progress, site.progressTotal), // TODO penalize distance?
                     do: 'build',
                     targetId: site.id,
