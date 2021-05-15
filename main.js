@@ -1,3 +1,7 @@
+// TODO better if we can get room size from platform
+const ROOM_WIDTH = 50;
+const ROOM_HEIGHT = 50;
+
 const minRoomCreeps = 2;
 const minSpawnProgressP = 0.1;
 const wanderFor = 10;
@@ -326,8 +330,29 @@ module.exports = {
 
         const haveEnergy = creep.store.getUsedCapacity(RESOURCE_ENERGY);
         if (haveEnergy) {
-            // TODO spawns
-            // TODO extensions
+            for (const struct of this.find(creep.room, FIND_MY_STRUCTURES)) {
+                switch (struct.structureType) {
+                    case STRUCTURE_SPAWN:
+                    case STRUCTURE_EXTENSION:
+                        const cap = struct.store.getFreeCapacity(RESOURCE_ENERGY);
+                        if (cap <= 0) continue;
+                        const capScore = Math.min(1, cap / haveEnergy);
+                        const distScore = distanceScore(creep.pos, struct.pos);
+                        yield {
+                            score: capScore * distScore,
+                            do: 'transfer',
+                            targetId: struct.id,
+                            extra: [RESOURCE_ENERGY],
+                            repeat: {
+                                untilEmpty: RESOURCE_ENERGY,
+                                untilErr: ERR_NOT_ENOUGH_RESOURCES,
+                            },
+                        };
+                        break;
+                    // TODO other types? priority by type?
+                }
+            }
+
             const ctl = creep.room.controller;
             if (ctl && ctl.my && !ctl.upgradeBlocked) {
                 const contribScore = scoreContrib(haveEnergy, ctl.progress, ctl.progressTotal);
@@ -437,6 +462,14 @@ function log(mark, kind, name, ...mess) {
 function normalScore(measure, min, max) {
     const p = (measure - min) / (max - min);
     return Math.max(0, Math.min(1, p));
+}
+
+function distanceScore(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    const quad = dx * dx + dy * dy;
+    const raw = quad / ROOM_WIDTH / ROOM_HEIGHT;
+    return Math.max(0, Math.min(1, 1 - raw));
 }
 
 function inverseQuadScore(measure, a, b) {
