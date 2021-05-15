@@ -1,4 +1,14 @@
+const minRoomCreeps = 2;
+const minSpawnProgressP = 0.1;
 const wanderFor = 10;
+
+const fromEntries = Object.fromEntries || function fromEntries(entries) {
+    const obj = {};
+    for (const [prop, val] of entries) {
+        obj[prop] = val;
+    }
+    return obj;
+};
 
 module.exports = {
     loop() {
@@ -27,23 +37,15 @@ module.exports = {
     },
 
     spawnCreepsIn(room) {
-        const spawns = room.find(FIND_MY_SPAWNS).filter(spawn => !spawn.spawning);
-        if (!spawns.length) continue;
-        const spawn = spawns[0]; // TODO better selection
-        const creeps = room.find(FIND_MY_CREEPS);
-        if (room.energyAvailable < 300 ||
-            (creeps.length < 2 && room.energyAvailable < room.energyCapacityAvailable
-        )) continue;
-        const partCost = 100;
-        const maxParts = Math.floor(room.energyAvailable / partCost);
-        // TODO specialization / design
-        const parts = [WORK, CARRY, MOVE];
-        for (let i=0, more=[MOVE, WORK, MOVE, CARRY]; parts.length < maxParts; i++)
-            parts.unshift(more[i % more.length]);
-        const newName = 'Worker' + Game.time;
-        const res = spawn.spawnCreep(parts, newName);
-        if (res == OK) logSpawn('⨁', spawn.name, parts, newName);
-        else logSpawn('⚠️', spawn.name, parts, newName, res);
+        for (const {spawn, parts, name} of bestChoice(this.designCreepsIn(room))) {
+            const res = spawn.spawnCreep(parts, name); // TODO support energyStructures
+            if (res == OK) {
+                logSpawn('⨁', spawn.name, parts, name);
+                break; // TODO more than one?
+            } else {
+                logSpawn('⚠️', spawn.name, parts, name, res);
+            }
+        }
     },
 
     reapCreepsIn(room) {
@@ -52,6 +54,114 @@ module.exports = {
             if (note(id)) {
                 this.reapCreep(creep, deathTime);
                 // TODO post a room job to collect any storage within ticksToDecay
+            }
+        }
+    },
+
+    *designCreepsIn(room) {
+
+        let roomCreeps = null;
+
+        for (const spawn of room.find(FIND_MY_SPAWNS)) {
+            if (spawn.spawning) continue;
+
+            const plan = energy => {
+                const designFunc = ctx => this.buildCreepDesign(ctx);
+                const resources = fromEntries([
+                    [RESOURCE_ENERGY, energy],
+                ]);
+                const env = {room, spawn};
+                return this.designCreep(designFunc, resources, {env});
+            };
+
+            // plan designs for what we can afford right now and ideally
+            const {energyAvailable, energyCapacityAvailable} = room;
+            const may = plan(energyAvailable);
+            if (!may) continue;
+            const could = energyAvailable < energyCapacityAvailable ? plan(energyCapacityAvailable) : null;
+
+            const progress = ((may, could) => {
+                if (!may) return 0;
+                if (!could) return 1;
+                return Object.entries(could)
+                    .map(([resource, n]) => (may[resource] || 0) / n)
+                    .reduce((a, b) => isNaN(a) ? b : isNaN(b) ? a : Math.min(a, b), NaN);
+            })(may && may.resources, could && could.resources);
+            const progressScore = normalScore(progress, minSpawnProgressP, 1);
+
+            // TODO factor capability novelty, demand, (dis)advantage vs peers
+            if (!roomCreeps) roomCreeps = room.find(FIND_MY_CREEPS);
+            const vsScore = (roomCreeps.length < minRoomCreeps) ? 1 : 0;
+
+            // TODO factor in estimated wait time
+            // TODO factor in spawn preference/advantage
+            const score = Math.max(progressScore, vsScore);
+
+            const {name: designName, parts, ...extra} = may;
+            if (parts.length) {
+                const name = `${designName} T${Game.time}`;
+                yield {spawn, score, name, parts, ...extra};
+            }
+        }
+    },
+
+    designCreep(designFunc, resources, opts={}) {
+        const {
+            defaultResource = Object.keys(resources)[0],
+            costs = part => [[defaultResource, BODYPART_COST[part]]],
+            env = {},
+        } = opts;
+
+        const ctx = {
+            env,
+            resources,
+            parts: [],
+            spent: {},
+            entries: [],
+
+            spend(...costs) {
+                for (const [resource, amount] of costs) {
+                    const have = this.resources[resource];
+                    if (typeof have != 'number' || isNaN(have) || have < amount) return false;
+                }
+                for (const [resource, amount] of costs) {
+                    this.resources[resource] -= amount;
+                    this.spent[resource] = (this.spent[resource] || 0) + amount;
+                }
+                return true;
+            },
+
+            produce(part, n=1) {
+                for (let i = 0; i < n; ++i) {
+                    if (this.spend(...costs(part))) {
+                        this.parts.push(part);
+                    } else {
+                        return i;
+                    }
+                }
+                return n;
+            },
+        };
+
+        const res = designFunc(ctx);
+        if (!res) return null;
+
+        return {
+            name: 'Untitled',
+            ...fromEntries(res.entries),
+            parts: res.parts.reverse(),
+            resources: res.spent,
+        };
+    },
+
+    buildCreepDesign(ctx) {
+        ctx.entries.push(['name', 'Worker']);
+        for (const part of [MOVE, WORK, CARRY]) {
+            if (!ctx.produce(part)) return null;
+        }
+        while (true) {
+            for (const part of [MOVE, WORK, MOVE, CARRY]) {
+                if (!ctx.produce(part)) return ctx;
             }
         }
     },
