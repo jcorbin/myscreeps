@@ -308,7 +308,10 @@ module.exports = {
     },
 
     assignCreep(creep) {
-        for (const choice of bestChoice(this.availableCreepTasks(creep))) {
+        for (const choice of logChoices(
+                `TaskFor[${creep.name}]`,
+                bestChoice,
+                this.availableCreepTasks(creep))) {
             return {assignTime: Game.time, ...choice};
         }
         const forTicks = wanderFor * (0.5 + Math.random());
@@ -491,4 +494,20 @@ function *bestChoice(choices) {
         }
     }
     if (best) yield best;
+}
+
+function* spyChoices(name, choices) {
+    for (const choice of choices) {
+        const {score, ...rest} = choice;
+        console.log(`... choice ${name} score:${score || 0} ...${JSON.stringify(rest)}`);
+        yield choice;
+    }
+}
+
+function* logChoices(name, chooser, choices) {
+    for (const chosen of chooser(spyChoices(name, choices))) {
+        const {score, ...rest} = chosen;
+        console.log(`>>> choose ${name} score:${score || 0} ...${JSON.stringify(rest)}`);
+        yield chosen;
+    }
 }
