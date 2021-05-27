@@ -1,3 +1,5 @@
+// @ts-check
+
 // TODO better if we can get room size from platform
 const ROOM_WIDTH = 50;
 const ROOM_HEIGHT = 50;
@@ -6,7 +8,12 @@ const minRoomCreeps = 2;
 const minSpawnProgressP = 0.1;
 const wanderFor = 10;
 
-const fromEntries = Object.fromEntries || function fromEntries(entries) {
+// TODO targeting older JS used by screeps, would be nice to use things like
+// existential operator and Object.fromEntries someday
+
+/** @param {[string, any][]} entries */
+function fromEntries(entries) {
+    /** @type {Object<string, any>} */
     const obj = {};
     for (const [prop, val] of entries) {
         obj[prop] = val;
@@ -14,15 +21,27 @@ const fromEntries = Object.fromEntries || function fromEntries(entries) {
     return obj;
 };
 
+/**
+ * @param {never} _
+ * @param {string} [mess]
+ * @returns {never}
+ */
+function assertNever(_, mess='inconceivable') {
+    throw new Error(mess);
+}
+
 module.exports = {
+    /** @type {null|Object<string, Object<string, any>>} */
     findCache: null,
 
+    /**
+     * @param {Room} room
+     * @param {FindConstant[]} types
+     */
     *find(room, ...types) {
         for (const type of types) {
-            const cached =
-                this.findCache &&
-                this.findCache[room.name] &&
-                this.findCache[room.name][type];
+            let roomCache = this.findCache && this.findCache[room.name];
+            const cached = roomCache && roomCache[type];
             if (cached) {
                 yield* cached
                 return;
@@ -30,10 +49,11 @@ module.exports = {
 
             const res = room.find(type);
             if (this.findCache) {
-                if (!this.findCache[room.name]) {
-                    this.findCache[room.name] = {};
+                if (!roomCache) {
+                    roomCache = {};
+                    this.findCache[room.name] = roomCache;
                 }
-                this.findCache[room.name][type] = res
+                roomCache[type] = res
             }
             yield* res;
         }
@@ -62,11 +82,12 @@ module.exports = {
         // TODO forget rooms?
         // forget notes once their object is gone
         for (const id of Object.keys(Memory.notes)) {
-            if (!Game.getObjectById(id))
+            if (!Game.getObjectById(/** @type {Id<any>} */ (id)))
                 delete Memory.notes[id];
         }
     },
 
+    /** @param {Room} room */
     spawnCreepsIn(room) {
         for (const {spawn, parts, name} of bestChoice(this.designCreepsIn(room))) {
             const res = spawn.spawnCreep(parts, name); // TODO support energyStructures
@@ -79,6 +100,7 @@ module.exports = {
         }
     },
 
+    /** @param {Room} room */
     reapCreepsIn(room) {
         for (const {id, creep, deathTime} of this.find(room, FIND_TOMBSTONES)) {
             if (!creep.my) continue;
@@ -89,17 +111,19 @@ module.exports = {
         }
     },
 
+    /** @param {Room} room */
     *designCreepsIn(room) {
         for (const spawn of this.find(room, FIND_MY_SPAWNS)) {
             if (spawn.spawning) continue;
 
+            /** @param {number} energy */
             const plan = energy => {
-                const designFunc = ctx => this.buildCreepDesign(ctx);
                 const resources = fromEntries([
                     [RESOURCE_ENERGY, energy],
                 ]);
                 const env = {room, spawn};
-                return this.designCreep(designFunc, resources, {env});
+                const design = this.buildCreepDesign(new CreepDesign(resources, {env}));
+                return design ? design.result : null;
             };
 
             // plan designs for what we can afford right now and ideally
@@ -132,75 +156,39 @@ module.exports = {
         }
     },
 
-    designCreep(designFunc, resources, opts={}) {
-        const {
-            defaultResource = Object.keys(resources)[0],
-            costs = part => [[defaultResource, BODYPART_COST[part]]],
-            env = {},
-        } = opts;
-
-        const ctx = {
-            env,
-            resources,
-            parts: [],
-            spent: {},
-            entries: [],
-
-            spend(...costs) {
-                for (const [resource, amount] of costs) {
-                    const have = this.resources[resource];
-                    if (typeof have != 'number' || isNaN(have) || have < amount) return false;
-                }
-                for (const [resource, amount] of costs) {
-                    this.resources[resource] -= amount;
-                    this.spent[resource] = (this.spent[resource] || 0) + amount;
-                }
-                return true;
-            },
-
-            produce(part, n=1) {
-                for (let i = 0; i < n; ++i) {
-                    if (this.spend(...costs(part))) {
-                        this.parts.push(part);
-                    } else {
-                        return i;
-                    }
-                }
-                return n;
-            },
-        };
-
-        const res = designFunc(ctx);
-        if (!res) return null;
-
-        return {
-            name: 'Untitled',
-            ...fromEntries(res.entries),
-            parts: res.parts.reverse(),
-            resources: res.spent,
-        };
-    },
-
-    buildCreepDesign(ctx) {
-        ctx.entries.push(['name', 'Worker']);
+    /**
+     * @param {CreepDesign} design
+     */
+    buildCreepDesign(design) {
+        design.entries.push(['name', 'Worker']);
         for (const part of [MOVE, WORK, CARRY]) {
-            if (!ctx.produce(part)) return null;
+            if (!design.produce(part)) return null;
         }
         while (true) {
             for (const part of [MOVE, WORK, MOVE, CARRY]) {
-                if (!ctx.produce(part)) return ctx;
+                if (!design.produce(part)) return design;
             }
         }
     },
 
+    /** @param {Creep} creep */
     runCreep(creep) {
         if (creep.spawning) return;
         let task = creep.memory.task;
-        if (!task) return;
-        if (!task) task = this.assignCreep(creep);
-        creep.memory.task = task;
+        if (!task) {
+            const choice = this.chooseCreepTask(creep) || {
+                wander: 'unassigned',
+                deadline: Game.time + wanderFor * (0.5 + Math.random()),
+                score: 0,
+            };
+            creep.memory.task = task = {
+                assignTime: Game.time,
+                ...choice,
+            };
+        }
         // logCreep('🙋', creep.name, JSON.stringify(task));
-        const res = this.runCreepTask(creep, task);
+
+        const res = this.execCreepTask(creep, task);
         if (res == null) return;
         if (!res.ok) {
             if (res.deadline != null) {
@@ -213,41 +201,99 @@ module.exports = {
         delete creep.memory.task;
     },
 
-    runCreepTask(creep, task) {
+    /**
+     * @param {Creep} creep
+     * @returns {Task|null}
+     */
+    chooseCreepTask(creep) {
+        let choices = this.availableCreepTasks(creep);
+        choices = logChoices(`TaskFor[${creep.name}]`, bestChoice, choices);
+        for (const task of choices) {
+            return task;
+        }
+        return null;
+    },
+
+    /**
+     * @param {Creep} creep
+     * @param {Task} task
+     * @returns {{ok: boolean, reason: string, deadline?: number}|null}
+     */
+    execCreepTask(creep, task) {
         const {deadline} = task;
         if (deadline != null && deadline < Game.time) {
             return {ok: false, reason: 'deadline expired', deadline};
         }
 
-        if (!task.wander) delete creep.memory.wanderingFor;
-        if (task.do) return this.doCreepTask(creep, task);
-        if (task.wander) return this.wanderCreep(creep);
+        if (!('wander' in task)) delete creep.memory.wanderingFor;
+        if ('do' in task) return this.execCreepAction(creep, task);
+        if ('wander' in task) return this.wanderCreep(creep);
 
         return {ok: false, reason: 'invalid creep task'};
     },
 
-    doCreepTask(creep, task) {
-        const fun = creep[task.do];
-        if (typeof fun != 'function') {
-            return {ok: false, reason: 'invalid creep function'};
-        }
+    /**
+     * @param {Creep} creep
+     * @param {DoTask} task
+     * @returns {[ScreepsReturnCode, null|RoomPosition]}
+     */
+    doCreepTaskAction(creep, task) {
+        let target;
 
-        const target = Game.getObjectById(task.targetId);
-        if (!target) {
+        switch (task.do) {
+
+        case "harvest":
+            target = Game.getObjectById(task.targetId);
+            if (!target) return [ERR_INVALID_TARGET, null];
+            return [creep.harvest(target), target.pos];
+
+        case "build":
+            target = Game.getObjectById(task.targetId);
+            if (!target) return [ERR_INVALID_TARGET, null];
+            return [creep.build(target), target.pos];
+
+        case "transfer":
+            target = Game.getObjectById(task.targetId);
+            if (!target) return [ERR_INVALID_TARGET, null];
+            return [creep.transfer(target, task.resourceType, task.amount), target.pos];
+
+        case "upgradeController":
+            target = Game.getObjectById(task.targetId);
+            if (!target) return [ERR_INVALID_TARGET, null];
+            return [creep.upgradeController(target), target.pos];
+
+        case "pickup":
+            target = Game.getObjectById(task.targetId);
+            if (!target) return [ERR_INVALID_TARGET, null];
+            return [creep.pickup(target), target.pos];
+
+        }
+    },
+
+    /**
+     * @param {Creep} creep
+     * @param {DoTask} task
+     * @returns {{ok: boolean, reason: string}|null}
+     */
+    execCreepAction(creep, task) {
+        const {code, target} = this.dispatchCreepAction(creep, task);
+        switch (code) {
+
+        case ERR_INVALID_TARGET:
             return {ok: false, reason: 'target gone'};
-        }
 
-        let err = fun.call(creep, target, ...(task.extra || []));
-        // TODO other forms of pre-error handling
-        if (err == ERR_NOT_IN_RANGE) {
+        case ERR_NOT_IN_RANGE:
+            if (!target) return {ok: false, reason: 'no target'};
             creep.moveTo(target);
             return null;
+
+        // TODO other forms of pre-error handling
         }
 
-        if (err != OK || !task.repeat) {
-            const expected = task.repeat && task.repeat.untilErr;
-            const ok = err === OK || err === expected;
-            return {ok, reason: `code ${err}`};
+        if (code != OK || !task.repeat) {
+            const expected = task.repeat && task.repeat.untilCode;
+            const ok = code === OK || code === expected;
+            return {ok, reason: `code ${code}`};
         }
 
         if (task.repeat.untilFull != null &&
@@ -258,9 +304,60 @@ module.exports = {
             creep.store.getUsedCapacity(task.repeat.untilEmpty) > 0
         ) return null;
 
-        return {ok: true, reason: `code ${err} (final)`};
+        return {ok: true, reason: `code ${code} (final)`};
     },
 
+    /**
+     * @param {Creep} creep
+     * @param {DoTask} task
+     * @returns {{code: ScreepsReturnCode, target?: RoomObject}}
+     */
+    dispatchCreepAction(creep, task) {
+        let target = null;
+
+        switch (task.do) {
+
+        case "harvest":
+            target = Game.getObjectById(task.targetId);
+            return target ? {
+                code: creep.harvest(target),
+                target,
+            } : {code: ERR_INVALID_TARGET};
+
+        case "build":
+            target = Game.getObjectById(task.targetId);
+            return target ? {
+                code: creep.build(target),
+                target,
+            } : {code: ERR_INVALID_TARGET};
+
+        case "transfer":
+            target = Game.getObjectById(task.targetId);
+            return target ? {
+                code: creep.transfer(target, task.resourceType, task.amount),
+                target,
+            } : {code: ERR_INVALID_TARGET};
+
+        case "upgradeController":
+            target = Game.getObjectById(task.targetId);
+            return target ? {
+                code: creep.upgradeController(target),
+                target,
+            } : {code: ERR_INVALID_TARGET};
+
+        case "pickup":
+            target = Game.getObjectById(task.targetId);
+            return target ? {
+                code: creep.pickup(target),
+                target,
+            } : {code: ERR_INVALID_TARGET};
+
+        default:
+            assertNever(task, 'invalid creep action');
+        }
+    },
+
+    /** @param {Creep} creep */
     wanderCreep(creep) {
         const wanderingFor = (creep.memory.wanderingFor || 0) + 1;
         creep.memory.wanderingFor = wanderingFor;
@@ -279,7 +376,8 @@ module.exports = {
             LEFT,
             TOP_LEFT,
         ];
-        const err = creep.move(directions[Math.floor(Math.random() * directions.length)]);
+        const dir = directions[Math.floor(Math.random() * directions.length)];
+        const err = creep.move(dir);
         if (err === OK) return null; // keep going until deadline
         if (err === ERR_NO_BODYPART) {
             this.killCreep(creep, 'unable to move');
@@ -288,6 +386,10 @@ module.exports = {
         return {ok: false, reason: `code: ${err}`};
     },
 
+    /**
+     * @param {Creep} creep
+     * @param {number} deathTime
+     */
     reapCreep(creep, deathTime) {
         // TODO use deathTime to explain death from room.getEventLog collection
         // TODO provide evolution feedback
@@ -302,29 +404,27 @@ module.exports = {
         logCreep('💀', name, JSON.stringify({deathTime, partCounts, mem}));
     },
 
+    /**
+     * @param {string} name
+     * @param {CreepMemory} [mem]
+     */
     forgetCreep(name, mem=Memory.creeps[name]) {
         delete Memory.creeps[name];
         logCreep('👻', name, JSON.stringify(mem));
     },
 
-    assignCreep(creep) {
-        for (const choice of logChoices(
-                `TaskFor[${creep.name}]`,
-                bestChoice,
-                this.availableCreepTasks(creep))) {
-            return {assignTime: Game.time, ...choice};
-        }
-        const forTicks = wanderFor * (0.5 + Math.random());
-        return {
-            assignTime: Game.time,
-            wander: true,
-            deadline: Game.time + forTicks,
-        };
-    },
-
+    /**
+     * @param {Creep} creep
+     * @returns {Generator<Task>}
+     */
     *availableCreepTasks(creep) {
         const contribMin = 0.05;
         const contribMax = 0.25;
+        /**
+         * @param {number} have
+         * @param {number} progress
+         * @param {number} total
+         */
         function scoreContrib(have, progress, total) {
             const remain = total - progress;
             const contribP = have / remain;
@@ -342,17 +442,17 @@ module.exports = {
                         const capScore = Math.min(1, cap / haveEnergy);
                         const distScore = distanceScore(creep.pos, struct.pos);
                         yield {
-                            score: capScore * distScore,
                             do: 'transfer',
                             targetId: struct.id,
-                            extra: [RESOURCE_ENERGY],
+                            resourceType: RESOURCE_ENERGY,
                             repeat: {
                                 untilEmpty: RESOURCE_ENERGY,
-                                untilErr: ERR_NOT_ENOUGH_RESOURCES,
+                                untilCode: ERR_NOT_ENOUGH_RESOURCES,
                             },
+                            score: capScore * distScore,
                         };
                         break;
-                    // TODO other types? priority by type?
+                    // TODO other structure types? priority by type?
                 }
             }
 
@@ -361,13 +461,13 @@ module.exports = {
                 const contribScore = scoreContrib(haveEnergy, ctl.progress, ctl.progressTotal);
                 const iqScore = inverseQuadScore(ctl.ticksToDowngrade, creep.pos, ctl.pos);
                 yield {
-                    score: Math.max(contribScore, iqScore),
                     do: 'upgradeController',
                     targetId: ctl.id,
                     repeat: {
                         untilEmpty: RESOURCE_ENERGY,
-                        untilErr: ERR_NOT_ENOUGH_RESOURCES,
+                        untilCode: ERR_NOT_ENOUGH_RESOURCES,
                     },
+                    score: Math.max(contribScore, iqScore),
                 };
             }
         }
@@ -378,9 +478,9 @@ module.exports = {
             if (dropped &&
                 creep.store.getFreeCapacity(dropped.resourceType) > dropped.amount
             ) yield {
-                score: 0.5, // TODO take distance / decay into account
                 do: 'pickup',
                 targetId: dropped.id,
+                score: 0.5, // TODO take distance / decay into account
             };
             // TODO transfer from tombstones
             // TODO it's always an option to put things in storage or to drop them
@@ -389,25 +489,28 @@ module.exports = {
         const canWork = creep.getActiveBodyparts(WORK) > 0;
         if (canWork) {
             if (haveEnergy) {
-                for (const site of this.find(creep.room, FIND_CONSTRUCTION_SITES)) yield {
-                    score: scoreContrib(haveEnergy, site.progress, site.progressTotal), // TODO penalize distance?
-                    do: 'build',
-                    targetId: site.id,
-                    repeat: {
-                        untilEmpty: RESOURCE_ENERGY,
-                        untilErr: ERR_NOT_ENOUGH_RESOURCES,
-                    },
-                };
+                for (const site of this.find(creep.room, FIND_CONSTRUCTION_SITES)) {
+                    const contribScore = scoreContrib(haveEnergy, site.progress, site.progressTotal);
+                    yield {
+                        do: 'build',
+                        targetId: site.id,
+                        repeat: {
+                            untilEmpty: RESOURCE_ENERGY,
+                            untilCode: ERR_NOT_ENOUGH_RESOURCES,
+                        },
+                        score: contribScore, // TODO penalize distance?
+                    };
+                }
             }
 
             if (canCarry && creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
                 // TODO rank all sources
                 const source = creep.pos.findClosestByRange(FIND_SOURCES_ACTIVE);
                 if (source) yield {
-                    score: 0.4, // TODO factor in availability
                     do: 'harvest',
                     targetId: source.id,
                     repeat: {untilFull: RESOURCE_ENERGY},
+                    score: 0.4, // TODO factor in availability
                 };
             }
 
@@ -418,11 +521,19 @@ module.exports = {
         // TODO other modalities like heal and attack
     },
 
+    /**
+     * @param {Creep} creep
+     * @param {string} reason
+     */
     disposeCreep(creep, reason) {
         // TODO task to recycle at nearest spawn
         this.killCreep(creep, reason);
     },
 
+    /**
+     * @param {Creep} creep
+     * @param {string} reason
+     */
     killCreep(creep, reason) {
         const err = creep.suicide();
         if (err === OK) {
@@ -431,11 +542,79 @@ module.exports = {
             logCreep('⚠️', creep.name, `suicide failed code: ${err}; reason: ${reason}`);
         }
     },
-
 };
+
+class CreepDesign {
+    /** @typedef {[ResourceConstant, number][]} costEntries */
+
+    /**
+    * @param {Object<ResourceConstant, number>} resources
+    * @param {Object} [opts]
+    * @param {ResourceConstant} [opts.defaultResource]
+    * @param {(part: BodyPartConstant) => costEntries} [opts.costs]
+    * @param {Object<string, any>} [opts.env]
+    */
+    constructor(resources, opts={}) {
+        const {
+            defaultResource = /** @type {ResourceConstant[]} */ (Object.keys(resources))[0],
+            costs = part => defaultResource ? [[defaultResource, BODYPART_COST[part]]] : [],
+            env = {},
+        } = opts;
+        this.env = env;
+        this.resources = resources;
+        this.costs = costs;
+        /** @type {BodyPartConstant[]} */
+        this.parts = [];
+        /** @type {Object<ResourceConstant, number>} */
+        this.spent = {};
+        /** @type {[string, any][]} */
+        this.entries = [];
+    }
+
+    get result() {
+        return {
+            name: 'Untitled',
+            ...fromEntries(this.entries),
+            parts: this.parts.reverse(),
+            resources: this.spent,
+        };
+    }
+
+    /** @param {costEntries} costs */
+    spend(...costs) {
+        for (const [resource, amount] of costs) {
+            const have = this.resources[resource];
+            if (typeof have != 'number' || isNaN(have) || have < amount) return false;
+        }
+        for (const [resource, amount] of costs) {
+            this.resources[resource] -= amount;
+            this.spent[resource] = (this.spent[resource] || 0) + amount;
+        }
+        return true;
+    }
+
+    /**
+     * @param {BodyPartConstant} part
+     * @param {number} [n]
+     */
+    produce(part, n=1) {
+        for (let i = 0; i < n; ++i) {
+            if (this.spend(...this.costs(part))) {
+                this.parts.push(part);
+            } else {
+                return i;
+            }
+        }
+        return n;
+    }
+}
 
 if (Memory.notes == null) Memory.notes = {};
 
+/**
+ * @param {Iterable<string>} tokens
+ * @Generator<T|number>
+ */
 function* uniq(tokens) {
     let last = '', n = 0;
     for (const token of tokens) {
@@ -448,25 +627,52 @@ function* uniq(tokens) {
     if (n > 1) yield n;
 }
 
+/** @param {string} id */
 function note(id) {
     if (Memory.notes[id] != null) return false;
     Memory.notes[id] = Game.time;
     return true;
 }
 
+/**
+ * @param {string} mark
+ * @param {string} name
+ * @param {any[]} mess
+ */
 function logSpawn(mark, name, ...mess) { log(mark, 'Spawns', name, ...mess); }
+
+/**
+ * @param {string} mark
+ * @param {string} name
+ * @param {any[]} mess
+ */
 function logCreep(mark, name, ...mess) { log(mark, 'Creeps', name, ...mess); }
 
+/**
+ * @param {string} mark
+ * @param {string} kind
+ * @param {string} name
+ * @param {any[]} mess
+ */
 function log(mark, kind, name, ...mess) {
     // TODO collect entry alongside tick events?
     console.log(`T${Game.time} ${mark} ${kind}.${name}`, ...mess);
 }
 
+/**
+ * @param {number} measure
+ * @param {number} min
+ * @param {number} max
+ */
 function normalScore(measure, min, max) {
     const p = (measure - min) / (max - min);
     return Math.max(0, Math.min(1, p));
 }
 
+/**
+ * @param {Point} a
+ * @param {Point} b
+ */
 function distanceScore(a, b) {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
@@ -475,6 +681,11 @@ function distanceScore(a, b) {
     return Math.max(0, Math.min(1, 1 - raw));
 }
 
+/**
+ * @param {number} measure
+ * @param {Point} a
+ * @param {Point} b
+ */
 function inverseQuadScore(measure, a, b) {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
@@ -483,19 +694,30 @@ function inverseQuadScore(measure, a, b) {
     return 1 - normalScore(measure, Math.sqrt(quad), quad);
 }
 
+/**
+ * @template {(Object & {score?: number})} T
+ * @param {Iterable<T>} choices
+ * @returns {Generator<T>}
+ */
 function *bestChoice(choices) {
     // TODO heap select top N
     let best = null;
     for (const choice of choices) {
         const score = choice.score || 0;
         const prior = best && best.score;
-        if (score > prior || typeof prior != 'number' || isNaN(prior)) {
+        if (typeof prior != 'number' || score > prior || isNaN(prior)) {
             best = choice;
         }
     }
     if (best) yield best;
 }
 
+/**
+ * @template {(Object & {score?: number})} T
+ * @param {string} name
+ * @param {Iterable<T>} choices
+ * @returns {Generator<T>}
+ */
 function* spyChoices(name, choices) {
     for (const choice of choices) {
         const {score, ...rest} = choice;
@@ -504,6 +726,13 @@ function* spyChoices(name, choices) {
     }
 }
 
+/**
+ * @template {(Object & {score?: number})} T
+ * @param {string} name
+ * @param {(choices: Iterable<T>) => Iterable<T>} chooser
+ * @param {Iterable<T>} choices
+ * @returns {Generator<T>}
+ */
 function* logChoices(name, chooser, choices) {
     for (const chosen of chooser(spyChoices(name, choices))) {
         const {score, ...rest} = chosen;
