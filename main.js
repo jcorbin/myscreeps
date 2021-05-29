@@ -8,75 +8,39 @@ const minRoomCreeps = 2;
 const minSpawnProgressP = 0.1;
 const wanderFor = 10;
 
-// TODO targeting older JS used by screeps, would be nice to use things like
-// existential operator and Object.fromEntries someday
-
-/** @param {[string, any][]} entries */
-function fromEntries(entries) {
-    /** @type {Object<string, any>} */
-    const obj = {};
-    for (const [prop, val] of entries) {
-        obj[prop] = val;
+class Agent {
+    loop() {
+        this.extend({
+            findCache: {},
+        }).tick();
     }
-    return obj;
-};
-
-/**
- * @param {never} _
- * @param {string} [mess]
- * @returns {never}
- */
-function assertNever(_, mess='inconceivable') {
-    throw new Error(mess);
-}
-
-module.exports = {
-    /** @type {null|Object<string, Object<string, any>>} */
-    findCache: null,
 
     /**
-     * @param {Room} room
-     * @param {FindConstant[]} types
+     * @param {Partial<Agent>} props
+     * @returns {Agent}
      */
-    *find(room, ...types) {
-        for (const type of types) {
-            let roomCache = this.findCache && this.findCache[room.name];
-            const cached = roomCache && roomCache[type];
-            if (cached) {
-                yield* cached
-                return;
-            }
+    extend(props) {
+        const self = /** @type {Agent} */ (Object.create(this));
+        Object.assign(self, props);
+        return self;
+    }
 
-            const res = room.find(type);
-            if (this.findCache) {
-                if (!roomCache) {
-                    roomCache = {};
-                    this.findCache[room.name] = roomCache;
-                }
-                roomCache[type] = res
-            }
-            yield* res;
-        }
-    },
-
-    loop() {
-        const self = Object.create(this);
-        self.findCache = {};
-
+    tick() {
         for (const room of Object.values(Game.rooms)) {
             // TODO collect room.getEventLog
-            self.reapCreepsIn(room);
-            self.spawnCreepsIn(room);
+            this.reapCreepsIn(room);
+            this.spawnCreepsIn(room);
         }
 
         for (const creep of Object.values(Game.creeps)) {
-            self.runCreep(creep);
+            this.runCreep(creep);
         }
 
         // forget any creeps that we didn't reap above
         for (const [name, mem] of Object.entries(Memory.creeps)) {
-            if (!Game.creeps[name])
-                self.forgetCreep(name, mem);
+            if (!Game.creeps[name]) {
+                this.forgetCreep(name, mem);
+            }
         }
         // TODO forget spawns
         // TODO forget rooms?
@@ -85,7 +49,18 @@ module.exports = {
             if (!Game.getObjectById(/** @type {Id<any>} */ (id)))
                 delete Memory.notes[id];
         }
-    },
+    }
+
+    /** @param {Room} room */
+    reapCreepsIn(room) {
+        for (const {id, creep, deathTime} of this.find(room, FIND_TOMBSTONES)) {
+            if (!creep.my) continue;
+            if (note(id)) {
+                this.reapCreep(creep, deathTime);
+                // TODO post a room job to collect any storage within ticksToDecay
+            }
+        }
+    }
 
     /** @param {Room} room */
     spawnCreepsIn(room) {
@@ -98,18 +73,7 @@ module.exports = {
                 logSpawn('⚠️', spawn.name, parts, name, res);
             }
         }
-    },
-
-    /** @param {Room} room */
-    reapCreepsIn(room) {
-        for (const {id, creep, deathTime} of this.find(room, FIND_TOMBSTONES)) {
-            if (!creep.my) continue;
-            if (note(id)) {
-                this.reapCreep(creep, deathTime);
-                // TODO post a room job to collect any storage within ticksToDecay
-            }
-        }
-    },
+    }
 
     /** @param {Room} room */
     *designCreepsIn(room) {
@@ -154,7 +118,7 @@ module.exports = {
                 yield {spawn, score, name, parts, ...extra};
             }
         }
-    },
+    }
 
     /**
      * @param {CreepDesign} design
@@ -169,7 +133,56 @@ module.exports = {
                 if (!design.produce(part)) return design;
             }
         }
-    },
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {number} deathTime
+     */
+    reapCreep(creep, deathTime) {
+        // TODO use deathTime to explain death from room.getEventLog collection
+        // TODO provide evolution feedback
+        const {name, body} = creep;
+        const partCounts = Array.from(uniq(
+            body
+                .map(({type}) => type)
+                .sort()
+        ));
+        const mem = Memory.creeps[name];
+        delete Memory.creeps[name];
+        logCreep('💀', name, JSON.stringify({deathTime, partCounts, mem}));
+    }
+
+    /**
+     * @param {string} name
+     * @param {CreepMemory} [mem]
+     */
+    forgetCreep(name, mem=Memory.creeps[name]) {
+        delete Memory.creeps[name];
+        logCreep('👻', name, JSON.stringify(mem));
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {string} reason
+     */
+    disposeCreep(creep, reason) {
+        // TODO task to recycle at nearest spawn
+        this.killCreep(creep, reason);
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {string} reason
+     */
+    killCreep(creep, reason) {
+        const err = creep.suicide();
+        if (err === OK) {
+            logCreep('☠️', creep.name, reason);
+        } else {
+            logCreep('⚠️', creep.name, `suicide failed code: ${err}; reason: ${reason}`);
+        }
+    }
 
     /** @param {Creep} creep */
     runCreep(creep) {
@@ -199,7 +212,7 @@ module.exports = {
         }
         // TODO collect management data
         delete creep.memory.task;
-    },
+    }
 
     /**
      * @param {Creep} creep
@@ -212,7 +225,7 @@ module.exports = {
             return task;
         }
         return null;
-    },
+    }
 
     /**
      * @param {Creep} creep
@@ -230,45 +243,7 @@ module.exports = {
         if ('wander' in task) return this.wanderCreep(creep);
 
         return {ok: false, reason: 'invalid creep task'};
-    },
-
-    /**
-     * @param {Creep} creep
-     * @param {DoTask} task
-     * @returns {[ScreepsReturnCode, null|RoomPosition]}
-     */
-    doCreepTaskAction(creep, task) {
-        let target;
-
-        switch (task.do) {
-
-        case "harvest":
-            target = Game.getObjectById(task.targetId);
-            if (!target) return [ERR_INVALID_TARGET, null];
-            return [creep.harvest(target), target.pos];
-
-        case "build":
-            target = Game.getObjectById(task.targetId);
-            if (!target) return [ERR_INVALID_TARGET, null];
-            return [creep.build(target), target.pos];
-
-        case "transfer":
-            target = Game.getObjectById(task.targetId);
-            if (!target) return [ERR_INVALID_TARGET, null];
-            return [creep.transfer(target, task.resourceType, task.amount), target.pos];
-
-        case "upgradeController":
-            target = Game.getObjectById(task.targetId);
-            if (!target) return [ERR_INVALID_TARGET, null];
-            return [creep.upgradeController(target), target.pos];
-
-        case "pickup":
-            target = Game.getObjectById(task.targetId);
-            if (!target) return [ERR_INVALID_TARGET, null];
-            return [creep.pickup(target), target.pos];
-
-        }
-    },
+    }
 
     /**
      * @param {Creep} creep
@@ -305,7 +280,7 @@ module.exports = {
         ) return null;
 
         return {ok: true, reason: `code ${code} (final)`};
-    },
+    }
 
     /**
      * @param {Creep} creep
@@ -355,13 +330,15 @@ module.exports = {
         default:
             assertNever(task, 'invalid creep action');
         }
-    },
+    }
 
     /** @param {Creep} creep */
     wanderCreep(creep) {
+        // NOTE update docs on WanderTask with semantics
         const wanderingFor = (creep.memory.wanderingFor || 0) + 1;
         creep.memory.wanderingFor = wanderingFor;
-        if (wanderingFor >= 2*wanderFor) {
+        if (wanderingFor >= 3*wanderFor) {
+            // TODO not past minRoomCreeps
             this.disposeCreep(creep, `wandered for ${wanderingFor} ticks`);
             return null;
         }
@@ -384,34 +361,7 @@ module.exports = {
             return null; // leave task on zombie
         }
         return {ok: false, reason: `code: ${err}`};
-    },
-
-    /**
-     * @param {Creep} creep
-     * @param {number} deathTime
-     */
-    reapCreep(creep, deathTime) {
-        // TODO use deathTime to explain death from room.getEventLog collection
-        // TODO provide evolution feedback
-        const {name, body} = creep;
-        const partCounts = Array.from(uniq(
-            body
-                .map(({type}) => type)
-                .sort()
-        ));
-        const mem = Memory.creeps[name];
-        delete Memory.creeps[name];
-        logCreep('💀', name, JSON.stringify({deathTime, partCounts, mem}));
-    },
-
-    /**
-     * @param {string} name
-     * @param {CreepMemory} [mem]
-     */
-    forgetCreep(name, mem=Memory.creeps[name]) {
-        delete Memory.creeps[name];
-        logCreep('👻', name, JSON.stringify(mem));
-    },
+    }
 
     /**
      * @param {Creep} creep
@@ -519,30 +469,49 @@ module.exports = {
         }
 
         // TODO other modalities like heal and attack
-    },
+    }
+
+    /** @type {null|Object<string, Object<string, any>>} */
+    findCache = null;
 
     /**
-     * @param {Creep} creep
-     * @param {string} reason
+     * @param {Room} room
+     * @param {FindConstant[]} types
      */
-    disposeCreep(creep, reason) {
-        // TODO task to recycle at nearest spawn
-        this.killCreep(creep, reason);
-    },
+    *find(room, ...types) {
+        for (const type of types) {
+            let roomCache = this.findCache && this.findCache[room.name];
+            const cached = roomCache && roomCache[type];
+            if (cached) {
+                yield* cached
+                return;
+            }
 
-    /**
-     * @param {Creep} creep
-     * @param {string} reason
-     */
-    killCreep(creep, reason) {
-        const err = creep.suicide();
-        if (err === OK) {
-            logCreep('☠️', creep.name, reason);
-        } else {
-            logCreep('⚠️', creep.name, `suicide failed code: ${err}; reason: ${reason}`);
+            const res = room.find(type);
+            if (this.findCache) {
+                if (!roomCache) {
+                    roomCache = {};
+                    this.findCache[room.name] = roomCache;
+                }
+                roomCache[type] = res
+            }
+            yield* res;
         }
-    },
-};
+    }
+}
+
+// TODO targeting older JS used by screeps, would be nice to use things like
+// existential operator and Object.fromEntries someday
+
+/** @param {[string, any][]} entries */
+function fromEntries(entries) {
+    /** @type {Object<string, any>} */
+    const obj = {};
+    for (const [prop, val] of entries) {
+        obj[prop] = val;
+    }
+    return obj;
+}
 
 class CreepDesign {
     /** @typedef {[ResourceConstant, number][]} costEntries */
@@ -740,3 +709,14 @@ function* logChoices(name, chooser, choices) {
         yield chosen;
     }
 }
+
+/**
+ * @param {never} _
+ * @param {string} [mess]
+ * @returns {never}
+ */
+function assertNever(_, mess='inconceivable') {
+    throw new Error(mess);
+}
+
+module.exports = new Agent();

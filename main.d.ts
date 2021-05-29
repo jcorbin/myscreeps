@@ -117,6 +117,12 @@ type PickupTask = {
 // TODO suicide task
 // suicide(): OK | ERR_NOT_OWNER | ERR_BUSY;
 
+// WanderTask is a special task, used as default idle behavior, which causes
+// random movement: when a creep has no task available, it takes a WanderTask
+// with a deadline of 5-15 steps. A wandering creep also counts how many total
+// ticks it has wandered for. After this count exceeds 30 ticks, the creep
+// disposes of itself; currently this means immediate suicide, but may
+// eventually involve recycling.
 type WanderTask = {
     wander: string; // reason
 }
