@@ -24,6 +24,7 @@ const moveDirections = [
 class Agent {
     loop() {
         this.extend({
+            debugLevelCache: {},
             findCache: {},
         }).tick();
     }
@@ -116,7 +117,9 @@ class Agent {
         for (const {spawn, parts, name} of bestChoice(this.designCreepsIn(room))) {
             const res = spawn.spawnCreep(parts, name); // TODO support energyStructures
             if (res == OK) {
-                logSpawn('⨁', spawn.name, parts, name);
+                if (this.debugLevel('spawnCreep', spawn) > 0) {
+                    logSpawn('⨁', spawn.name, parts, name);
+                }
                 break; // TODO more than one?
             } else {
                 logSpawn('⚠️', spawn.name, parts, name, res);
@@ -225,7 +228,9 @@ class Agent {
     killCreep(creep, reason) {
         const err = creep.suicide();
         if (err === OK) {
-            logCreep('☠️', creep.name, reason);
+            if (this.debugLevel('suicide', creep) > 0) {
+                logCreep('☠️', creep.name, reason);
+            }
         } else {
             logCreep('⚠️', creep.name, `suicide failed code: ${err}; reason: ${reason}`);
         }
@@ -250,8 +255,10 @@ class Agent {
 
         const res = this.execCreepTask(creep, task);
         if (res == null) return;
-        if (!res.ok) {
-            if (res.deadline != null) {
+        if (this.debugLevel('creepTasks', creep) > 0) {
+            if (res.ok) {
+                logCreep('✅', creep.name, JSON.stringify(task));
+            } else if (res.deadline != null) {
                 logCreep('⏰', creep.name, res.reason, JSON.stringify(task), `deadline: T${res.deadline}`);
             } else {
                 logCreep('🤔', creep.name, res.reason, JSON.stringify(task));
@@ -267,7 +274,7 @@ class Agent {
      */
     chooseCreepTask(creep) {
         let choices = this.availableCreepTasks(creep);
-        choices = logChoices(`TaskFor[${creep.name}]`, bestChoice, choices);
+        choices = debugChoices(this.debugLevel('creepTasks', creep), `TaskFor[${creep.name}]`, bestChoice, choices);
         for (const task of choices) {
             return task;
         }
@@ -508,6 +515,21 @@ class Agent {
         // TODO other modalities like heal and attack
     }
 
+    /** @type {null|Object<string, number>} */
+    debugLevelCache = null;
+
+    /**
+     * @param {string} what
+     * @param {Room|Creep|StructureSpawn|Flag|PowerCreep} [subject]
+     */
+    debugLevel(what, subject) {
+        if (!this.debugLevelCache) return debugLevel(what, subject);
+        const cacheKey = `${objectKey(subject)}.${what}`;
+        if (cacheKey in this.debugLevelCache)
+            return this.debugLevelCache[cacheKey];
+        return this.debugLevelCache[cacheKey] = debugLevel(what, subject);
+    }
+
     /** @type {null|Object<string, Object<string, any>>} */
     findCache = null;
 
@@ -561,6 +583,40 @@ function fromEntries(entries) {
         obj[prop] = val;
     }
     return obj;
+}
+
+/**
+ * @param {undefined|null|Room|Creep|StructureSpawn|Flag|PowerCreep} object
+ * @returns {string}
+ */
+function objectKey(object) {
+    if (object instanceof Room) return `Room_${object.name}`;
+    if (object instanceof Creep) return `Creep_${object.name}`;
+    if (object instanceof StructureSpawn) return `Spawn_${object.name}`;
+    if (object instanceof Flag) return `Flag_${object.name}`;
+    if (object instanceof PowerCreep) return `PowerCreep_${object.name}`;
+    return '';
+}
+
+/**
+ * @param {string} what
+ * @param {Room|Creep|StructureSpawn|Flag|PowerCreep} [subject]
+ */
+function debugLevel(what, subject) {
+    let level = 0;
+    for (const debug of [
+        subject && 'memory' in subject && subject.memory.debug,
+        subject && 'room' in subject && subject.room && subject.room.memory.debug,
+        Memory.debug,
+    ]) if (debug) switch (typeof debug) {
+        case 'number':
+            level = Math.max(level, debug);
+            break;
+        case 'object':
+            if (what in debug) return debug[what];
+            break;
+    }
+    return level;
 }
 
 class CreepDesign {
@@ -753,31 +809,30 @@ function *bestChoice(choices) {
 }
 
 /**
- * @template {(Object & {score?: number})} T
- * @param {string} name
- * @param {Iterable<T>} choices
- * @returns {Generator<T>}
- */
-function* spyChoices(name, choices) {
-    for (const choice of choices) {
-        const {score, ...rest} = choice;
-        console.log(`... choice ${name} score:${score || 0} ...${JSON.stringify(rest)}`);
-        yield choice;
-    }
-}
-
-/**
- * @template {(Object & {score?: number})} T
+ * @template T
+ * @param {number} level
  * @param {string} name
  * @param {(choices: Iterable<T>) => Iterable<T>} chooser
  * @param {Iterable<T>} choices
  * @returns {Generator<T>}
  */
-function* logChoices(name, chooser, choices) {
-    for (const chosen of chooser(spyChoices(name, choices))) {
-        const {score, ...rest} = chosen;
-        console.log(`>>> choose ${name} score:${score || 0} ...${JSON.stringify(rest)}`);
-        yield chosen;
+function* debugChoices(level, name, chooser, choices) {
+    if (level > 1) choices = logChoices(`... choice ${name}`, choices);
+    choices = chooser(choices);
+    if (level > 0) choices = logChoices(`>>> choose ${name}`, choices);
+    yield* choices;
+}
+
+/**
+ * @template T
+ * @param {string} label
+ * @param {Iterable<T>} choices
+ * @returns {Generator<T>}
+ */
+function* logChoices(label, choices) {
+    for (const choice of choices) {
+        console.log(`${label} ${JSON.stringify(choice)}`);
+        yield choice;
     }
 }
 

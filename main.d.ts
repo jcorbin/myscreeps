@@ -3,13 +3,33 @@ type Point = {
     y: number;
 }
 
+type DebugLevel = number | {[what: string]: number};
+
 interface Memory {
+    debug: DebugLevel;
     notes: {[id: string]: number};
 }
 
 interface CreepMemory {
+    debug: DebugLevel;
     task?: AssignedTask;
     wanderingFor?: number;
+}
+
+interface PowerCreepMemory {
+    debug: DebugLevel;
+}
+
+interface RoomMemory {
+    debug: DebugLevel;
+}
+
+interface SpawnMemory {
+    debug: DebugLevel;
+}
+
+interface FlagMemory {
+    debug: DebugLevel;
 }
 
 type AssignedTask = Task & {
