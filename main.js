@@ -39,11 +39,47 @@ class Agent {
         // forget any creeps that we didn't reap above
         for (const [name, mem] of Object.entries(Memory.creeps)) {
             if (!Game.creeps[name]) {
-                this.forgetCreep(name, mem);
+                delete Memory.creeps[name];
+                logCreep('👻', name, JSON.stringify(mem));
             }
         }
-        // TODO forget spawns
-        // TODO forget rooms?
+
+        // forget powerCreeps
+        // TODO do we properly reap powerCreeps
+        for (const [name, mem] of Object.entries(Memory.powerCreeps)) {
+            if (!Game.powerCreeps[name]) {
+                delete Memory.powerCreeps[name];
+                logPowerCreep('👻', name, JSON.stringify(mem));
+            }
+        }
+
+        // forget rooms
+        for (const [name, mem] of Object.entries(Memory.rooms)) {
+            if (!Game.rooms[name]) {
+                // TODO maybe archive for later?
+                delete Memory.rooms[name];
+                logRoom('👻', name, JSON.stringify(mem));
+            }
+        }
+
+        // forget spawns
+        for (const [name, mem] of Object.entries(Memory.spawns)) {
+            if (!Game.spawns[name]) {
+                delete Memory.spawns[name];
+                logSpawn('👻', name, JSON.stringify(mem));
+            }
+        }
+
+        // forget flags
+        for (const [name, mem] of Object.entries(Memory.flags)) {
+            if (!Game.flags[name]) {
+                delete Memory.flags[name];
+                logFlag('👻', name, JSON.stringify(mem));
+            }
+        }
+
+        // TODO forget flags
+
         // forget notes once their object is gone
         for (const id of Object.keys(Memory.notes)) {
             if (!Game.getObjectById(/** @type {Id<any>} */ (id)))
@@ -151,15 +187,6 @@ class Agent {
         const mem = Memory.creeps[name];
         delete Memory.creeps[name];
         logCreep('💀', name, JSON.stringify({deathTime, partCounts, mem}));
-    }
-
-    /**
-     * @param {string} name
-     * @param {CreepMemory} [mem]
-     */
-    forgetCreep(name, mem=Memory.creeps[name]) {
-        delete Memory.creeps[name];
-        logCreep('👻', name, JSON.stringify(mem));
     }
 
     /**
@@ -608,7 +635,28 @@ function note(id) {
  * @param {string} name
  * @param {any[]} mess
  */
+function logRoom(mark, name, ...mess) { log(mark, 'Rooms', name, ...mess); }
+
+/**
+ * @param {string} mark
+ * @param {string} name
+ * @param {any[]} mess
+ */
 function logSpawn(mark, name, ...mess) { log(mark, 'Spawns', name, ...mess); }
+
+/**
+ * @param {string} mark
+ * @param {string} name
+ * @param {any[]} mess
+ */
+function logFlag(mark, name, ...mess) { log(mark, 'Flags', name, ...mess); }
+
+/**
+ * @param {string} mark
+ * @param {string} name
+ * @param {any[]} mess
+ */
+function logPowerCreep(mark, name, ...mess) { log(mark, 'PowerCreeps', name, ...mess); }
 
 /**
  * @param {string} mark
