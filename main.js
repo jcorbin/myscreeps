@@ -138,7 +138,7 @@ class Agent {
                 if (!could) return 1;
                 return Object.entries(could)
                     .map(([resource, n]) => (may[resource] || 0) / n)
-                    .reduce((a, b) => isNaN(a) ? b : isNaN(b) ? a : Math.min(a, b), NaN);
+                    .reduce(nanMin, NaN);
             })(may && may.resources, could && could.resources);
             const progressScore = normalScore(progress, minSpawnProgressP, 1);
 
@@ -533,6 +533,19 @@ class Agent {
         }
         yield* res;
     }
+}
+
+/**
+ * @param {number|undefined} a
+ * @param {number|undefined} b
+ * @returns {number}
+ */
+function nanMin(a, b) {
+    if (typeof a != 'number' || isNaN(a))
+        return typeof b == 'number' ? b : NaN;
+    if (typeof b != 'number' || isNaN(b))
+        return typeof a == 'number' ? a : NaN;
+    return Math.min(a, b);
 }
 
 // TODO targeting older JS used by screeps, would be nice to use things like
