@@ -42,22 +42,23 @@ type DoTask = (
     };
 };
 
-type BuildTask = {
+type TargetedTask<T extends RoomObject> = {
+    targetId: Id<T>;
+};
+
+type BuildTask = TargetedTask<ConstructionSite> & {
     // build(target: ConstructionSite): CreepActionReturnCode | ERR_NOT_ENOUGH_RESOURCES | ERR_RCL_NOT_ENOUGH;
     do: "build";
-    targetId: Id<ConstructionSite>;
 }
 
-type HarvestTask = {
+type HarvestTask = TargetedTask<Source | Mineral | Deposit> & {
     // harvest(target: Source | Mineral | Deposit): CreepActionReturnCode | ERR_NOT_FOUND | ERR_NOT_ENOUGH_RESOURCES;
     do: "harvest";
-    targetId: Id<Source | Mineral | Deposit>;
 }
 
-type TransferTask = {
+type TransferTask = TargetedTask<AnyCreep | Structure> & {
     // transfer(target: AnyCreep | Structure, resourceType: ResourceConstant, amount?: number): ScreepsReturnCode;
     do: "transfer";
-    targetId: Id<AnyCreep | Structure>;
     resourceType: ResourceConstant;
     amount?: number;
 }
@@ -65,16 +66,14 @@ type TransferTask = {
 // TODO WithdrawTask similar to TransferTask
 // withdraw(target: Structure | Tombstone | Ruin, resourceType: ResourceConstant, amount?: number): ScreepsReturnCode;
 
-type UpgradeControllerTask = {
+type UpgradeControllerTask = TargetedTask<StructureController> & {
     // upgradeController(target: StructureController): ScreepsReturnCode;
     do: 'upgradeController';
-    targetId: Id<StructureController>;
 }
 
-type PickupTask = {
+type PickupTask = TargetedTask<Resource> & {
     // pickup(target: Resource): CreepActionReturnCode | ERR_FULL;
     do: "pickup";
-    targetId: Id<Resource>;
 }
 
 // TODO DropTask
