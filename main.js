@@ -3,6 +3,7 @@
 // TODO better if we can get room size from platform
 const ROOM_WIDTH = 50;
 const ROOM_HEIGHT = 50;
+const ROOM_QUAD = ROOM_WIDTH * ROOM_HEIGHT;
 
 const minRoomCreeps = 2;
 const minSpawnProgressP = 0.1;
@@ -701,7 +702,7 @@ function distanceScore(a, b) {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
     const quad = dx * dx + dy * dy;
-    const raw = quad / ROOM_WIDTH / ROOM_HEIGHT;
+    const raw = quad / ROOM_QUAD;
     return Math.max(0, Math.min(1, 1 - raw));
 }
 
