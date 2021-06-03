@@ -1041,10 +1041,13 @@ class Agent {
                 const maxBodypart = maxActiveBodypart(creep);
                 maxPartCount = maxBodypart ? maxBodypart[1] : 0;
             }
-            const count = creep.getActiveBodyparts(part);
-            yield [`${part}Can`, maxPartCount == 0 || count < min
-                ? NaN
-                : count / maxPartCount];
+            if (part) {
+                // TODO take boosts into account
+                const count = creep.getActiveBodyparts(part);
+                yield [`${part}Can`, maxPartCount == 0 || count < min
+                    ? NaN
+                    : count / maxPartCount];
+            }
         }
 
         // score required carrying capacity
