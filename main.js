@@ -172,21 +172,28 @@ class Agent {
     }
 
     /**
-     * @param {Creep} creep
+     * @param {AnyCreep} creep
      * @param {number} deathTime
      */
     reapCreep(creep, deathTime) {
         // TODO use deathTime to explain death from room.getEventLog collection
-        // TODO provide evolution feedback
-        const {name, body} = creep;
-        const partCounts = Array.from(uniq(
-            body
+
+        // TODO only if (creep.my) ?
+
+        if (creep instanceof Creep) {
+            // TODO provide evolution feedback
+            const {name, body} = creep;
+            const partCounts = Array.from(uniq(
+                body
                 .map(({type}) => type)
                 .sort()
-        ));
-        const mem = Memory.creeps[name];
-        delete Memory.creeps[name];
-        logCreep('💀', name, JSON.stringify({deathTime, partCounts, mem}));
+            ));
+            const mem = Memory.creeps[name];
+            delete Memory.creeps[name];
+            logCreep('💀', name, JSON.stringify({deathTime, partCounts, mem}));
+        }
+
+        // TODO creep instanceof PowerCreep
     }
 
     /**
@@ -502,28 +509,28 @@ class Agent {
     findCache = null;
 
     /**
+     * @template {FindConstant} K
      * @param {Room} room
-     * @param {FindConstant[]} types
+     * @param {K} type
+     * @returns {Generator<FindTypes[K]>}
      */
-    *find(room, ...types) {
-        for (const type of types) {
-            let roomCache = this.findCache && this.findCache[room.name];
-            const cached = roomCache && roomCache[type];
-            if (cached) {
-                yield* cached
-                return;
-            }
-
-            const res = room.find(type);
-            if (this.findCache) {
-                if (!roomCache) {
-                    roomCache = {};
-                    this.findCache[room.name] = roomCache;
-                }
-                roomCache[type] = res
-            }
-            yield* res;
+    *find(room, type) {
+        let roomCache = this.findCache && this.findCache[room.name];
+        const cached = roomCache && roomCache[type];
+        if (cached) {
+            yield* cached
+            return;
         }
+
+        const res = room.find(type);
+        if (this.findCache) {
+            if (!roomCache) {
+                roomCache = {};
+                this.findCache[room.name] = roomCache;
+            }
+            roomCache[type] = res;
+        }
+        yield* res;
     }
 }
 
