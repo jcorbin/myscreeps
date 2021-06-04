@@ -1066,6 +1066,8 @@ class Agent {
                 ? 0.5 // TODO better estimate of prereq cost
                 : 1];
         }
+
+        // TODO requirements.power
     }
 
     /**

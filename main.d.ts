@@ -77,6 +77,7 @@ type TaskRequirements = {
     parts?: ReqSpecs<BodyPartConstant>;
     capacity?: number|ReqSpecs<ResourceConstant>;
     resources?: ReqSpecs<ResourceConstant>;
+    // TODO power?
 };
 
 type Scored = {
