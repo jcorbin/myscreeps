@@ -584,6 +584,22 @@ class Agent {
                 };
         }
 
+        // TODO plan movement
+        // if (range) {
+        //     const {pos} = taskTarget(task) || {};
+        //     if (pos && creep.pos.getRangeTo(pos) < range) {
+        //         const path = PathFinder.search(creep.pos, {pos, range}, {
+        //             // maxCost: TODO from job context?
+        //             // maxOps: TODO from agent budget?
+        //             // roomCallback: roomName => TODO make roads cheaper,
+        //         });
+        //         // TODO account for path.ops
+        //         // TODO reject or use if path.incomplete?
+        //         // TODO inform provider selection below to prefer "on the way"
+        //         // TODO amend next step path
+        //     }
+        // }
+
         return continueResult(planTask);
     }
 
