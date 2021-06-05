@@ -815,14 +815,77 @@ function inverseQuadScore(measure, a, b) {
  * @returns {Generator<T>}
  */
 function *bestChoice(choices) {
-    // TODO heap select top N
-    let best = null;
-    for (const choice of choices) {
-        const score = scoreOf(choice);
-        const prior = best ? scoreOf(best) : NaN;
-        if (score > prior || isNaN(prior)) best = choice;
+    /** @type {Heap<T>} */
+    const heap = {
+        items: Array.from(choices),
+        better: betterItemScore,
+    };
+    heapify(heap);
+    for (;;) {
+        const value = heappop(heap);
+        if (value === undefined) break;
+        yield value;
     }
-    if (best) yield best;
+}
+
+/**
+ * @param {(Object & {score?: number})[]} items
+ * @param {number} i
+ * @param {number} j
+ */
+function betterItemScore(items, i, j) {
+    const iScore = scoreOf(items[i]);
+    const jScore = scoreOf(items[j]);
+    return iScore > jScore;
+}
+
+/**
+ * @template T
+ * @typedef {Object} Heap
+ * @prop {T[]} items
+ * @prop {(ar: T[], i: number, j: number) => boolean} better
+ */
+
+/**
+ * @template T
+ * @param {Heap<T>} heap
+ */
+function heapify(heap) {
+    const {items} = heap;
+    for (let i = Math.floor(items.length/2) - 1; i >= 0; i--)
+        siftdown(heap, i);
+}
+
+/**
+ * @template T
+ * @param {Heap<T>} heap
+ */
+function heappop(heap) {
+    const {items} = heap;
+    const end = items.length - 1;
+    if (end > 0) {
+        [items[0], items[end]] = [items[end], items[0]];
+        siftdown(heap, 0, end);
+    }
+    return items.pop();
+}
+
+/**
+ * @template T
+ * @param {Heap<T>} heap
+ * @param {number} i
+ */
+function siftdown({items, better}, i, end=items.length-1) {
+    let root = i;
+    while (root <= end) {
+        const left = 2 * root + 1;
+        if (left > end) break;
+        const right = left + 1;
+        const child = right < end && better(items, right, left) ? right : left;
+        if (!better(items, child, root)) break;
+        [items[root], items[child]] = [items[child], items[root]];
+        root = child;
+    }
 }
 
 /**
