@@ -91,6 +91,7 @@ type Taskable = (
 
 type Task = (
     | AnyTask
+    | AllTask
     | ActionTask
     | MentalTask
     | SleepTask
@@ -438,4 +439,10 @@ type WanderTask = DoTask<"wander"> & {
 // does, and failing only if they all fail.
 type AnyTask = {
     anyOf: Task[];
+};
+
+// AllTask executes several tasks concurrently, finishing only once they all
+// succeed, and failing as soon as any one does.
+type AllTask = {
+    allOf: Task[];
 };

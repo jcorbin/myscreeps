@@ -290,6 +290,23 @@ class Agent {
             },
         );
 
+        if ('allOf' in task) return this.execCreepSubs(creep, task, task.allOf,
+            (res, i) => {
+                const {ok, reason} = res;
+                // fails when one does
+                if (!ok) return failResult(`allOf[${i}] ${reason}`);
+                // deletes sub-tasks on ok
+                return null;
+            },
+            subTasks => {
+                task.allOf = subTasks;
+                // ...only done once empty
+                return !subTasks.length
+                    ? okResult('allOf subTasks done')
+                    : null;
+            },
+        );
+
         if ('do' in task)
             return this.execCreepAction(creep, task);
         if ('think' in task)
@@ -1729,6 +1746,11 @@ function taskWithoutJob(task, jobName) {
             if (woctx) task.ctx[name] = woctx;
             else delete task.ctx[name];
         }
+    if ('allOf' in task) {
+        const prior = task.allOf.length;
+        task.allOf = filterTasks(task.allOf);
+        if (task.allOf.length < prior) return null;
+    }
     for (const {task: nextTask, update} of thenTasks(task))
         update(taskWithoutJob(nextTask, jobName));
     return task;
