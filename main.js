@@ -1120,7 +1120,7 @@ class Agent {
             },
             scoreFactors: {
                 priority: priority.harvestEnergy,
-                // TODO factor in availability
+                avail: energy / energyCapacity, // TODO normalize by carrying capacity instead?
             },
             task: {
                 doUntil: {full: RESOURCE_ENERGY},
