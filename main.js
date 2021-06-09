@@ -244,7 +244,6 @@ class Agent {
             const choice = this.chooseCreepTask(creep) || {
                 wander: 'unassigned',
                 deadline: Game.time + wanderFor * (0.5 + Math.random()),
-                score: 0,
             };
             creep.memory.task = task = {
                 assignTime: Game.time,
@@ -443,7 +442,10 @@ class Agent {
                                 untilEmpty: RESOURCE_ENERGY,
                                 untilCode: ERR_NOT_ENOUGH_RESOURCES,
                             },
-                            score: capScore * distScore,
+                            scoreFactors: {
+                                capacity: capScore,
+                                distance: distScore,
+                            },
                         };
                         break;
                     // TODO other structure types? priority by type?
@@ -492,7 +494,9 @@ class Agent {
                             untilEmpty: RESOURCE_ENERGY,
                             untilCode: ERR_NOT_ENOUGH_RESOURCES,
                         },
-                        score: contribScore, // TODO penalize distance?
+                        scoreFactors: {
+                            contrib: contribScore, // TODO penalize distance?
+                        },
                     };
                 }
             }
@@ -756,6 +760,21 @@ function log(mark, kind, name, ...mess) {
 }
 
 /**
+ * @param {Scored} object
+ * @returns {number}
+ */
+function scoreOf(object) {
+    let {score, scoreFactors} = object;
+    if (typeof score != 'number' || isNaN(score)) {
+        object.score = score = scoreFactors
+            ? Object.values(scoreFactors)
+                .reduce((a, b) => a * b, 1)
+            : 0;
+    }
+    return score;
+}
+
+/**
  * @param {number} measure
  * @param {number} min
  * @param {number} max
@@ -791,7 +810,7 @@ function inverseQuadScore(measure, a, b) {
 }
 
 /**
- * @template {(Object & {score?: number})} T
+ * @template {(Object & Scored)} T
  * @param {Iterable<T>} choices
  * @returns {Generator<T>}
  */
@@ -799,11 +818,9 @@ function *bestChoice(choices) {
     // TODO heap select top N
     let best = null;
     for (const choice of choices) {
-        const score = choice.score || 0;
-        const prior = best && best.score;
-        if (typeof prior != 'number' || score > prior || isNaN(prior)) {
-            best = choice;
-        }
+        const score = scoreOf(choice);
+        const prior = best ? scoreOf(best) : NaN;
+        if (score > prior || isNaN(prior)) best = choice;
     }
     if (best) yield best;
 }

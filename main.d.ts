@@ -36,14 +36,18 @@ type AssignedTask = Task & {
     assignTime: number;
 };
 
+type Scored = {
+    scoreFactors?: {[name: string]: number};
+    score?: number;
+};
+
 // Task represents a single unit of creep work.
-type Task = {
-    score: number;
-    deadline?: number;
-} & (
+type Task = (
     | DoTask
     | WanderTask
-);
+) & Scored & {
+    deadline?: number;
+};
 
 // DoTask represents concrete action that affects the shared world.
 // There are categorical limits concerning which actions may be concurrently
