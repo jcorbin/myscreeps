@@ -4,7 +4,9 @@
 const ROOM_WIDTH = 50;
 const ROOM_HEIGHT = 50;
 const ROOM_QUAD = ROOM_WIDTH * ROOM_HEIGHT;
+const ROOM_DIAG = Math.sqrt(ROOM_QUAD);
 
+const defaultMoveRate = 0.1;
 const minRoomCreeps = 2;
 const minSpawnProgressP = 0.1;
 
@@ -593,120 +595,225 @@ class Agent {
      * @returns {Generator<Task>}
      */
     *availableCreepTasks(creep) {
-        const contribMin = 0.05;
-        const contribMax = 0.25;
-        /**
-         * @param {number} have
-         * @param {number} progress
-         * @param {number} total
-         */
-        function scoreContrib(have, progress, total) {
-            const remain = total - progress;
-            const contribP = have / remain;
-            return normalScore(contribP, contribMin, contribMax);
+        for (const {task, requirements, ...taskScores} of this.availableRoomTasks(creep.room)) {
+            const scored = collectScores([
+                ['taskScore', scoreOf(taskScores)],
+                ...this.rateCreepTask(creep, task, requirements)
+            ]);
+            const score = scoreOf(scored);
+            if (isNaN(score) || score <= 0) continue;
+            yield {...task, ...scored};
+        }
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {Task} task
+     * @param {TaskRequirements} requirements
+     * @returns {Generator<[string, number]>}
+     */
+    *rateCreepTask(creep, task, {
+        range=NaN,
+        moveRate=isNaN(range) ? NaN : defaultMoveRate,
+        parts,
+        capacity,
+        resources,
+    }) {
+        // pass any pre-computed task score factors
+        for (const [name, factor] of scoreEntries(task)) yield [`task_${name}`, factor];
+
+        // score range to target
+        const target = taskTarget(task);
+        const rangeTo = target
+            ? creep.pos.getRangeTo(target) - range
+            : NaN;
+        if (!isNaN(rangeTo)) yield ['distance',
+            Math.max(0, Math.min(1, 1 - rangeTo / ROOM_DIAG))
+            // TODO fix cross-room case; currently it's taken to hard zero
+        ];
+
+        // score movement if required or needed
+        if (rangeTo && !isNaN(moveRate)) {
+            // TODO this assumes movement over land; can we do a better
+            // estimate without incurring full pathfinding cost?
+            let move = 0, weight = 0;
+            for (const {type, hits} of creep.body) if (hits > 0) switch (type) {
+                case MOVE:
+                    move++;
+                    break;
+                // TODO case CARRY: discount carry parts if empty... and
+                // depending on if we plan to change that
+                default:
+                    weight++;
+            }
+            yield ['movement', move <= 0 ? 0 : weight <= 0 ? 1 : move/weight];
         }
 
-        const haveEnergy = creep.store.getUsedCapacity(RESOURCE_ENERGY);
-        if (haveEnergy) {
-            for (const struct of this.find(creep.room, FIND_MY_STRUCTURES)) {
-                switch (struct.structureType) {
-                    case STRUCTURE_SPAWN:
-                    case STRUCTURE_EXTENSION:
-                        const cap = struct.store.getFreeCapacity(RESOURCE_ENERGY);
-                        if (cap <= 0) continue;
-                        const capScore = Math.min(1, cap / haveEnergy);
-                        const distScore = distanceScore(creep.pos, struct.pos);
-                        yield {
-                            doUntil: {or: [
-                                {empty: RESOURCE_ENERGY},
-                                {code: ERR_NOT_ENOUGH_RESOURCES},
-                            ]},
-                            then: {
-                                do: 'transfer',
-                                targetId: struct.id,
-                                resourceType: RESOURCE_ENERGY,
-                            },
-                            scoreFactors: {
-                                capacity: capScore,
-                                distance: distScore,
-                            },
-                        };
-                        break;
-                    // TODO other structure types? priority by type?
-                }
-            }
+        // TODO combine distance and movement into a travel time based score?
 
-            const ctl = creep.room.controller;
-            if (ctl && ctl.my && !ctl.upgradeBlocked) {
-                const contribScore = scoreContrib(haveEnergy, ctl.progress, ctl.progressTotal);
-                const iqScore = inverseQuadScore(ctl.ticksToDowngrade, creep.pos, ctl.pos);
-                yield {
-                    doUntil: {or: [
-                        {empty: RESOURCE_ENERGY},
-                        {code: ERR_NOT_ENOUGH_RESOURCES},
-                    ]},
-                    then: {
-                        do: 'upgradeController',
-                        targetId: ctl.id,
+        // score required body parts
+        let maxPartCount = NaN;
+        for (const [part, min] of reqSpecEntries(parts, 1)) if (part) {
+            if (isNaN(maxPartCount)) {
+                const maxBodypart = maxActiveBodypart(creep);
+                maxPartCount = maxBodypart ? maxBodypart[1] : 0;
+            }
+            const count = creep.getActiveBodyparts(part);
+            yield [`${part}Can`, maxPartCount == 0 || count < min
+                ? NaN
+                : count / maxPartCount];
+        }
+
+        // score required carrying capacity
+        for (const [resource, min] of reqSpecEntries(capacity, 1)) {
+            const free = resource
+                ? creep.store.getFreeCapacity(resource)
+                : creep.store.getFreeCapacity();
+            yield [`${resource || ''}CarryFree`, free < min
+                ? NaN
+                : 1];
+        }
+
+        // score required resources
+        for (const [resource, min] of reqSpecEntries(resources, 1)) {
+            const have = resource
+                ? creep.store.getUsedCapacity(resource)
+                : creep.store.getUsedCapacity();
+            yield [`${resource || ''}Have`, have < min
+                ? NaN
+                : 1];
+        }
+    }
+
+    /**
+     * @param {Room} room
+     * @returns {Generator<Scored & {task: Task, requirements: TaskRequirements}>}
+     */
+    *availableRoomTasks(room) {
+        // TODO config from memory
+        const maintainControllerDeadline = 2 * ROOM_QUAD;
+        const priority = {
+            harvestEnergy: 0.10,
+            upgradeController: 0.60,
+            fillEnergy: 0.75,
+            build: 0.80,
+            maintainController: 0.90,
+            pickup: 0.95,
+        };
+
+        // TODO clear tombstones... but should those be posted by the reaper?
+
+        for (const {id, resourceType} of this.find(room, FIND_DROPPED_RESOURCES)) yield {
+            requirements: {
+                parts: [CARRY],
+                capacity: [resourceType], // TODO require capacity for amount?
+            },
+            scoreFactors: {
+                priority: priority.pickup,
+                // TODO decay into account
+            },
+            task: {do: 'pickup', targetId: id},
+        };
+
+        for (const struct of this.find(room, FIND_MY_STRUCTURES)) switch (struct.structureType) {
+
+            case STRUCTURE_SPAWN:
+            case STRUCTURE_EXTENSION:
+                if (struct.store.getFreeCapacity(RESOURCE_ENERGY) > 0) yield {
+                    requirements: {
+                        parts: [CARRY],
+                        resources: [RESOURCE_ENERGY],
+                        // TODO require "enough" energy to have significant contribution?
                     },
-                    score: Math.max(contribScore, iqScore),
-                };
-            }
-        }
-
-        const canCarry = creep.getActiveBodyparts(CARRY) > 0;
-        if (canCarry) {
-            const dropped = creep.pos.findClosestByRange(FIND_DROPPED_RESOURCES);
-            if (dropped &&
-                creep.store.getFreeCapacity(dropped.resourceType) > dropped.amount
-            ) yield {
-                do: 'pickup',
-                targetId: dropped.id,
-                score: 0.5, // TODO take distance / decay into account
-            };
-            // TODO transfer from tombstones
-            // TODO it's always an option to put things in storage or to drop them
-        }
-
-        const canWork = creep.getActiveBodyparts(WORK) > 0;
-        if (canWork) {
-            if (haveEnergy) {
-                for (const site of this.find(creep.room, FIND_CONSTRUCTION_SITES)) {
-                    const contribScore = scoreContrib(haveEnergy, site.progress, site.progressTotal);
-                    yield {
+                    scoreFactors: {
+                        priority: priority.fillEnergy,
+                    },
+                    task: {
                         doUntil: {or: [
                             {empty: RESOURCE_ENERGY},
                             {code: ERR_NOT_ENOUGH_RESOURCES},
                         ]},
                         then: {
-                            do: 'build',
-                            targetId: site.id,
+                            do: 'transfer',
+                            targetId: struct.id,
+                            resourceType: RESOURCE_ENERGY,
                         },
-                        scoreFactors: {
-                            contrib: contribScore, // TODO penalize distance?
-                        },
-                    };
-                }
-            }
-
-            if (canCarry && creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-                // TODO rank all sources
-                const source = creep.pos.findClosestByRange(FIND_SOURCES_ACTIVE);
-                if (source) yield {
-                    until: {full: RESOURCE_ENERGY},
-                    then: {
-                        do: 'harvest',
-                        targetId: source.id,
                     },
-                    score: 0.4, // TODO factor in availability
                 };
-            }
+                break;
 
-            // TODO harvest minerals
-            // TODO other worker tasks like repair
+            // TODO other structure types, like general repair
         }
 
-        // TODO other modalities like heal and attack
+        for (const {id} of this.find(room, FIND_CONSTRUCTION_SITES)) yield {
+            requirements: {
+                parts: [WORK, CARRY],
+                resources: [RESOURCE_ENERGY],
+            },
+            scoreFactors: {
+                priority: priority.build,
+                // TODO score progress/progressTotal
+                // TODO priority by building type
+                // TODO require "enough" energy to have significant contribution?
+            },
+            task: {
+                doUntil: {or: [
+                    {empty: RESOURCE_ENERGY},
+                    {code: ERR_NOT_ENOUGH_RESOURCES},
+                ]},
+                then: {
+                    do: 'build',
+                    targetId: id,
+                },
+            },
+        };
+
+        const ctl = room.controller;
+        if (ctl && ctl.my && !ctl.upgradeBlocked) yield {
+            requirements: {
+                parts: [WORK, CARRY],
+                resources: [RESOURCE_ENERGY],
+            },
+            scoreFactors: {
+                priority: ctl.ticksToDowngrade <= maintainControllerDeadline
+                    ? priority.maintainController
+                    : priority.upgradeController,
+                // TODO score progress/progressTotal
+                // TODO require "enough" energy to have significant contribution?
+            },
+            task: {
+                doUntil: {or: [
+                    {empty: RESOURCE_ENERGY},
+                    {code: ERR_NOT_ENOUGH_RESOURCES},
+                ]},
+                then: {
+                    do: 'upgradeController',
+                    targetId: ctl.id,
+                },
+            },
+        };
+
+        for (const {id} of this.find(room, FIND_SOURCES_ACTIVE)) yield {
+            requirements: {
+                parts: [WORK, CARRY],
+                capacity: [RESOURCE_ENERGY],
+            },
+            scoreFactors: {
+                priority: priority.harvestEnergy,
+                // TODO factor in availability
+            },
+            task: {
+                doUntil: {full: RESOURCE_ENERGY},
+                then: {
+                    do: 'harvest',
+                    targetId: id,
+                }
+            },
+        };
+
+        // TODO harvest minerals
+
+        // TODO repair jobs? rampart maintenance? heal jobs? attack jobs? pull jobs? follow jobs?
     }
 
     /** @type {null|Object<string, number>} */
@@ -882,6 +989,66 @@ class CreepDesign {
 function hasActed(creep, since=Game.time) {
     const {memory: {lastActed}} = creep;
     return lastActed != null && lastActed >= since;
+}
+
+/**
+ * @param {Task} task
+ * @returns {null|RoomObject}
+ */
+function taskTarget(task) {
+    const targetId = taskTargetId(task);
+    return targetId && Game.getObjectById(targetId);
+}
+
+/**
+ * @param {Task} task
+ * @returns {Id<RoomObject>|null}
+ */
+function taskTargetId(task) {
+    if (!('targetId' in task)) return null;
+    return task.targetId;
+}
+
+/**
+ * @template {string} T
+ * @param {undefined|number|ReqSpecs<T>} spec
+ * @param {number} [dflt]
+ * @returns {Generator<[null|T, number]>}
+ */
+function* reqSpecEntries(spec, dflt=0) {
+    if (typeof spec == 'number')
+        yield [null, spec];
+    else if (spec) for (const item of spec)
+        yield Array.isArray(item) ? item : [item, dflt];
+}
+
+const allBodyparts = [
+    MOVE,
+    WORK,
+    CARRY,
+    ATTACK,
+    RANGED_ATTACK,
+    HEAL,
+    TOUGH,
+];
+
+/**
+ * @param {Creep} creep
+ * @returns {null|[BodyPartConstant, number]}
+ */
+function maxActiveBodypart(creep) {
+    /** @type {null|BodyPartConstant} */
+    let best = null;
+    let max = 0;
+    for (const part of allBodyparts) {
+        const count = creep.getActiveBodyparts(part);
+        if (count > max) {
+            best = part;
+            max = count;
+        }
+    }
+    if (best == null) return null;
+    return [best, max];
 }
 
 /**
@@ -1097,6 +1264,33 @@ function scoreOf(object) {
 }
 
 /**
+ * @param {Iterable<[string, number]>} factorEntries
+ * @returns {Scored}
+ */
+function collectScores(factorEntries) {
+    let score = 1;
+    /** @type {Object<string, number>} */
+    const scoreFactors = {};
+    for (const [name, factor] of factorEntries) {
+        scoreFactors[name] = factor;
+        score *= factor;
+    }
+    return {score, scoreFactors};
+}
+
+/**
+ * @param {Scored} object
+ * @returns {Generator<[string, number]>}
+ */
+function *scoreEntries(object) {
+    const {score, scoreFactors} = object;
+    if (scoreFactors)
+        yield* Object.entries(scoreFactors);
+    else if (typeof score == 'number')
+        yield ['jobScore', score];
+}
+
+/**
  * @param {number} measure
  * @param {number} min
  * @param {number} max
@@ -1104,31 +1298,6 @@ function scoreOf(object) {
 function normalScore(measure, min, max) {
     const p = (measure - min) / (max - min);
     return Math.max(0, Math.min(1, p));
-}
-
-/**
- * @param {Point} a
- * @param {Point} b
- */
-function distanceScore(a, b) {
-    const dx = a.x - b.x;
-    const dy = a.y - b.y;
-    const quad = dx * dx + dy * dy;
-    const raw = quad / ROOM_QUAD;
-    return Math.max(0, Math.min(1, 1 - raw));
-}
-
-/**
- * @param {number} measure
- * @param {Point} a
- * @param {Point} b
- */
-function inverseQuadScore(measure, a, b) {
-    const dx = a.x - b.x;
-    const dy = a.y - b.y;
-    const quad = dx * dx + dy * dy;
-    if (measure > quad) return 0;
-    return 1 - normalScore(measure, Math.sqrt(quad), quad);
 }
 
 /**

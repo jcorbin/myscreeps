@@ -32,6 +32,16 @@ interface FlagMemory {
     debug: DebugLevel;
 }
 
+type ReqSpecs<T extends string> = (T|[T, number])[];
+
+type TaskRequirements = {
+    range?: number;
+    moveRate?: number;
+    parts?: ReqSpecs<BodyPartConstant>;
+    capacity?: number|ReqSpecs<ResourceConstant>;
+    resources?: ReqSpecs<ResourceConstant>;
+};
+
 type Scored = {
     scoreFactors?: {[name: string]: number};
     score?: number;
