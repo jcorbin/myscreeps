@@ -272,6 +272,24 @@ class Agent {
     execCreepTaskable(creep, task) {
         if (typeof task == 'function') return task();
 
+
+        if ('anyOf' in task) return this.execCreepSubs(creep, task, task.anyOf,
+            (res, i) => {
+                const {ok, reason} = res;
+                // done when one is
+                if (ok) return {ok, reason: `anyOf[${i}] ${reason}`};
+                // deletes sub-tasks on error... TODO log?
+                return null;
+            },
+            subTasks => {
+                task.anyOf = subTasks;
+                // ...only failing when no sub-task is left
+                return !subTasks.length
+                    ? {ok: false, reason: 'no anyOf subTask succeeded'}
+                    : null;
+            },
+        );
+
         if ('do' in task)
             return this.execCreepAction(creep, task);
         if ('think' in task)

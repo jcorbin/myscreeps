@@ -90,6 +90,7 @@ type Taskable = (
 );
 
 type Task = (
+    | AnyTask
     | ActionTask
     | MentalTask
     | SleepTask
@@ -431,4 +432,10 @@ type DropTask = DoTask<"drop"> & {
 // WanderTask causes a creep to move randomly.
 type WanderTask = DoTask<"wander"> & {
     reason: string;
+};
+
+// AnyTask executes several tasks concurrently, finishing when one of them
+// does, and failing only if they all fail.
+type AnyTask = {
+    anyOf: Task[];
 };
