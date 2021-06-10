@@ -482,6 +482,7 @@ class Agent {
      * @returns {TaskResult}
      */
     planCreepTask(_creep, task) {
+        // TODO implement pre-req task(s)
         return {ok: true, reason: 'then the murders began', nextTask: task};
     }
 
