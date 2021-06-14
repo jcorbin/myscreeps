@@ -9,6 +9,18 @@ const minRoomCreeps = 2;
 const minSpawnProgressP = 0.1;
 const wanderFor = 10;
 
+/** @type {DirectionConstant[]} */
+const moveDirections = [
+    TOP,
+    TOP_RIGHT,
+    RIGHT,
+    BOTTOM_RIGHT,
+    BOTTOM,
+    BOTTOM_LEFT,
+    LEFT,
+    TOP_LEFT,
+];
+
 class Agent {
     loop() {
         this.extend({
@@ -378,17 +390,7 @@ class Agent {
             return null;
         }
 
-        const directions = [
-            TOP,
-            TOP_RIGHT,
-            RIGHT,
-            BOTTOM_RIGHT,
-            BOTTOM,
-            BOTTOM_LEFT,
-            LEFT,
-            TOP_LEFT,
-        ];
-        const dir = directions[Math.floor(Math.random() * directions.length)];
+        const dir = moveDirections[Math.floor(Math.random() * moveDirections.length)];
         const err = creep.move(dir);
         if (err === OK) return null; // keep going until deadline
         if (err === ERR_NO_BODYPART) {
