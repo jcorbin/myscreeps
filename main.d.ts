@@ -99,6 +99,7 @@ type ActionTask = (
 type MentalTask = (
     | ReviewTask
     | SeekTask
+    | HaveResourceTask
 );
 
 type TaskMeta = Scored & {
@@ -261,6 +262,13 @@ type ReviewTask = ThinkTask<"review">;
 // SeekTask is a "looking for work" task, causing the creep to look for
 // other tasks to do.
 type SeekTask = ThinkTask<"seek">;
+
+type HaveResourceTask = {
+    think: 'haveResource';
+    resourceType: ResourceConstant;
+    min: number;
+    // TODO max?: number;
+};
 
 // DoTask represents concrete action that affects the shared world.
 // There are categorical limits concerning which actions may be concurrently
