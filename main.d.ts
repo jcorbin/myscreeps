@@ -262,7 +262,9 @@ type ReviewTask = ThinkTask<"review">;
 
 // SeekTask is a "looking for work" task, causing the creep to look for
 // other tasks to do.
-type SeekTask = ThinkTask<"seek">;
+type SeekTask = ThinkTask<"seek"> & {
+    must?: boolean;
+};
 
 type FreeCapacityTask = {
     think: 'freeCapacity';

@@ -540,6 +540,9 @@ class Agent {
             if (res.ok && res.nextTask) return resolveTaskThen(seek, res);
         }
 
+        if (seek.must)
+            return resolveTaskThen(seek, {ok: false, reason: 'cannot find available task'});
+
         return null;
     }
 
