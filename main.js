@@ -451,6 +451,15 @@ class Agent {
                     return {ok: false, reason: `sufficient resourceType:${resourceType}`};
                 });
 
+            case 'freeCapacity':
+                return this.execCreepTaskLoop(creep, task, () => {
+                    if (hasActed(creep)) return null; // store data may be invalid
+                    const {resourceType, min} = task;
+                    if (creep.store.getFreeCapacity(resourceType) < min)
+                        return {ok: true, reason: `insufficient resourceType:${resourceType} capacity`};
+                    return {ok: false, reason: `sufficient resourceType:${resourceType} capacity`};
+                });
+
             default:
                 assertNever(task, 'invalid creep thought');
         }

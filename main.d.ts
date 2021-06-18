@@ -99,6 +99,7 @@ type ActionTask = (
 type MentalTask = (
     | ReviewTask
     | SeekTask
+    | FreeCapacityTask
     | HaveResourceTask
 );
 
@@ -262,6 +263,13 @@ type ReviewTask = ThinkTask<"review">;
 // SeekTask is a "looking for work" task, causing the creep to look for
 // other tasks to do.
 type SeekTask = ThinkTask<"seek">;
+
+type FreeCapacityTask = {
+    think: 'freeCapacity';
+    resourceType: ResourceConstant;
+    min: number;
+    // TODO max?: number;
+};
 
 type HaveResourceTask = {
     think: 'haveResource';
