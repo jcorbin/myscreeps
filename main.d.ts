@@ -241,6 +241,9 @@ type TaskResult = {
     // The caller may execute a nextTask in either the current tick or a future
     // one at its discretion.
     nextTask?: Task;
+
+    // TODO code?: ScreepsReturnCode // for things like wander fail discrimination?
+    // TODO spent computation tracking?
 };
 
 // LoopTask runs its then.ok (body task) many times, breaking and continuing to
