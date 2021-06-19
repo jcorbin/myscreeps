@@ -933,6 +933,7 @@ class Agent {
             };
 
         case 'wander':
+            // TODO use a per-creep RNG that stores its state in memory
             const direction = moveDirections[Math.floor(Math.random() * moveDirections.length)];
             return {code: creep.move(direction)};
 
