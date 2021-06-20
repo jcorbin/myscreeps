@@ -46,9 +46,8 @@ class Agent {
             this.spawnCreepsIn(room);
         }
 
-        for (const creep of Object.values(Game.creeps)) {
-            this.runCreep(creep);
-        }
+        let creeps = Object.values(Game.creeps);
+        while (creeps.length) creeps = creeps.filter(creep => this.runCreepTask(creep));
 
         // forget any creeps that we didn't reap above
         for (const [name, mem] of Object.entries(Memory.creeps)) {
@@ -236,47 +235,60 @@ class Agent {
         }
     }
 
-    /** @param {Creep} creep */
-    runCreep(creep) {
-        if (creep.spawning) return;
-        let task = creep.memory.task;
+    /**
+     * @param {Creep} creep
+     * @returns {boolean}
+     */
+    runCreepTask(creep) {
+        const {name, memory, spawning} = creep;
+        if (spawning) return false;
+        const debugLevel = this.debugLevel('creepTasks', creep);
+
+        let task = memory.task;
         if (!task) {
             const choice = this.chooseCreepTask(creep) || {
                 wander: 'unassigned',
                 deadline: Game.time + wanderFor * (0.5 + Math.random()),
             };
-            creep.memory.task = task = {
+            memory.task = task = {
                 assignTime: Game.time,
                 ...choice,
             };
         }
-        // logCreep('🙋', creep.name, JSON.stringify(task));
+        // logCreep('🙋', name, JSON.stringify(task));
 
         const res = this.execCreepTask(creep, task);
-        if (!res) return;
 
+        // task yields
+        if (!res) {
+            return false;
+        }
+
+        // task continues...
         const {nextTask} = res;
         if (nextTask) {
             const {assignTime} = task;
             task = {...nextTask, assignTime};
-            creep.memory.task = task;
-            if (this.debugLevel('creepTasks', creep) > 0) {
-                logCreep('⏭', creep.name, JSON.stringify(task));
-            }
-            return;
+            memory.task = task;
+            if (debugLevel > 0) logCreep('⏭', name, JSON.stringify(task));
+            return true;
         }
 
-        if (this.debugLevel('creepTasks', creep) > 0) {
+        // task done
+        if (debugLevel > 0) {
             if (res.ok) {
-                logCreep('✅', creep.name, JSON.stringify(task));
+                logCreep('✅', name, JSON.stringify(task));
             } else if (res.deadline != null) {
-                logCreep('⏰', creep.name, res.reason, JSON.stringify(task), `deadline: T${res.deadline}`);
+                logCreep('⏰', name, res.reason, JSON.stringify(task), `deadline: T${res.deadline}`);
             } else {
-                logCreep('🤔', creep.name, res.reason, JSON.stringify(task));
+                logCreep('🤔', name, res.reason, JSON.stringify(task));
             }
         }
         // TODO collect management data
-        delete creep.memory.task;
+        if (memory.task) {
+            delete memory.task;
+        }
+        return true;
     }
 
     /**
