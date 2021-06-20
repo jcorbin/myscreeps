@@ -45,6 +45,10 @@ class Agent {
             // TODO collect room.getEventLog
             this.reapCreepsIn(room);
             this.spawnCreepsIn(room);
+
+            // populate initial room jobs, or update on deadline; leave regular
+            // updates to be demanded by seeking creeps
+            this.updateRoomJobs(room, NaN);
         }
 
         let creeps = Object.values(Game.creeps);
@@ -221,6 +225,7 @@ class Agent {
         if (spawning) return false;
         const debugLevel = this.debugLevel('creepTasks', creep);
 
+        const oldJobNames = new Set(memory.task && taskJobNames(memory.task));
         const res = this.execCreepTask(creep, memory.task || (() => this.initCreepTask(creep)));
 
         // task yields
@@ -232,17 +237,23 @@ class Agent {
         const {nextTask} = res;
         if (nextTask) {
             memory.task = nextTask;
+            const newJobNames = new Set(taskJobNames(nextTask));
+            this.updateAssignedJobs(creep, oldJobNames, newJobNames);
             if (debugLevel > 0) logCreep('⏭', name, JSON.stringify(nextTask));
             return true;
         }
 
+
         // task done
         this.reviewCreepTask(creep, res); // final review
+
+        this.updateAssignedJobs(creep, oldJobNames, new Set());
         if (memory.task) {
             delete memory.task;
         }
         return true;
     }
+
 
     /**
      * @param {Creep} creep
@@ -495,13 +506,50 @@ class Agent {
     }
 
     /**
-     * @param {Creep} _creep
-     * @param {Task} task
+     * @param {Creep} creep
+     * @param {Task} [task]
      * @returns {TaskResult}
      */
-    planCreepTask(_creep, task) {
-        // TODO implement pre-req task(s)
-        return {ok: true, reason: 'then the murders began', nextTask: task};
+    planCreepTask(creep, task) {
+        if (!task) return {ok: false, reason: 'untasked'};
+
+        let planTask = task;
+
+        const {jobName} = task;
+        const job = jobName && ifirst(lookupJob(jobName, creep));
+        if (jobName && job) {
+            const {
+                requirements: {
+                    resources,
+                    capacity,
+                } = {},
+            } = job;
+            const defaultReqLoad = creep.getActiveBodyparts(CARRY) * CARRY_CAPACITY;
+
+            // plan to free up needed capacity
+            for (const [resourceType, min] of reqSpecEntries(capacity, defaultReqLoad)) if (resourceType)
+                planTask = {
+                    jobName,
+                    think: 'freeCapacity', resourceType, min, then: {
+                        fail: {jobName, think: 'seek', must: true, capacity: resourceType, min, then: planTask},
+                        // TODO loop back to freeCapacity for multi-step
+                        ok: planTask,
+                    },
+                };
+
+            // plan to seek and acquire needed resources
+            for (const [resourceType, min] of reqSpecEntries(resources, defaultReqLoad)) if (resourceType)
+                planTask = {
+                    jobName,
+                    think: 'haveResource', resourceType, min, then: {
+                        fail: {jobName, think: 'seek', must: true, acquire: resourceType, then: planTask},
+                        // TODO loop back to haveResource for multi-step
+                        ok: planTask,
+                    },
+                };
+        }
+
+        return {ok: true, reason: 'then the murders began', nextTask: planTask};
     }
 
     /**
@@ -541,8 +589,8 @@ class Agent {
 
         if ('acquire' in seek) {
             const {acquire: resourceType} = seek;
-            choices = ifilter(choices, task => {
-                const prov = taskProvides(task);
+            choices = ifilter(choices, ({job}) => {
+                const prov = jobProvides(job);
                 if (!prov) return false;
                 return prov.resourceType == resourceType;
             });
@@ -558,8 +606,8 @@ class Agent {
             if (!haves.length) return {ok: false, reason: 'cannot seek capacity: have nothing'};
 
             const [resourceType, _have] = haves[0];
-            choices = ifilter(choices, task => {
-                const prov = taskConsumes(task);
+            choices = ifilter(choices, ({job}) => {
+                const prov = jobConsumes(job);
                 if (!prov) return false;
                 return prov.resourceType == resourceType;
             });
@@ -569,17 +617,18 @@ class Agent {
 
         if ('scoreOver' in seek) {
             const {scoreOver} = seek;
-            choices = ifilter(choices, task => scoreOf(task) > scoreOver);
+            choices = ifilter(choices, ({task}) => scoreOf(task) > scoreOver);
         }
 
         choices = debugChoices(debugLevel, `TaskFor[${creep.name}]`, bestChoice, choices);
-        for (const task of choices) {
-            const res = this.planCreepTask(creep, task);
+        for (const {task, job} of choices) {
+            let arg = {jobName: job.name, ...task};
+            const res = this.planCreepTask(creep, arg);
             if (res.ok && res.nextTask) return resolveTaskThen(seek, res);
         }
 
         if (fallback) {
-            const res = this.planCreepTask({creep, task: fallback});
+            const res = this.planCreepTask(creep, fallback);
             if (res.ok && res.nextTask) return res;
         }
 
@@ -587,6 +636,28 @@ class Agent {
             return resolveTaskThen(seek, {ok: false, reason: 'cannot find available task'});
 
         return null;
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {Set<string>} oldJobNames
+     * @param {Set<string>} newJobNames
+     * @returns {void}
+     */
+    updateAssignedJobs(creep, oldJobNames, newJobNames) {
+        const creepId = creep.id;
+        for (const oldJobName of oldJobNames) if (!newJobNames.has(oldJobName))
+            for (const oldJob of lookupJob(oldJobName, creep)) {
+                if (oldJob.assigned) {
+                    oldJob.assigned = oldJob.assigned.filter(id => id != creepId);
+                }
+            }
+        for (const jobName of newJobNames) if (!oldJobNames.has(jobName))
+            for (const newJob of lookupJob(jobName, creep)) {
+                const ids = new Set(newJob.assigned);
+                ids.add(creepId);
+                newJob.assigned = [...ids];
+            }
     }
 
     /**
@@ -656,6 +727,11 @@ class Agent {
                 target,
             } : {code: ERR_INVALID_TARGET};
 
+        case "drop":
+            return {
+                code: creep.drop(task.resourceType, task.amount),
+            };
+
         case 'wander':
             const direction = moveDirections[Math.floor(Math.random() * moveDirections.length)];
             return {code: creep.move(direction)};
@@ -667,18 +743,65 @@ class Agent {
 
     /**
      * @param {Creep} creep
-     * @returns {Generator<Task>}
+     * @returns {Generator<{job: Job, task: Task}>}
      */
     *availableCreepTasks(creep) {
-        for (const {task, requirements, ...taskScores} of this.availableRoomTasks(creep.room)) {
-            const scored = collectScores([
-                ['taskScore', scoreOf(taskScores)],
-                ...this.rateCreepTask(creep, task, requirements)
-            ]);
+        for (const [source, jobs] of jobSources(creep)) {
+            if (source instanceof Room)
+                this.updateRoomJobs(source);
+            yield* imap(
+                this.rateCreepJobs(creep, Object.values(jobs.byName)),
+                ({job}) => {
+                    const {task} = job;
+                    return {job, task};
+                },
+            );
+        }
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {Iterable<Job>} jobs
+     * @returns {Generator<{job: Job} & Scored>}
+     */
+    *rateCreepJobs(creep, jobs) {
+        for (const job of jobs) {
+            const scored = collectScores(this.rateCreepJob(creep, job));
             const score = scoreOf(scored);
             if (isNaN(score) || score <= 0) continue;
-            yield {...task, ...scored};
+            yield {job, ...scored};
         }
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {Job} job
+     * @returns {Generator<[string, number]>}
+     */
+    *rateCreepJob(creep, job) {
+        const {
+            assigned=[],
+            requirements: {
+                assign: {
+                    min: minAssigned=1,
+                    max: maxAssigned=NaN,
+                } = {},
+                ...requirements
+            } = {},
+            task,
+        } = job;
+
+        // pass any pre-computed job score factors
+        for (const [name, factor] of scoreEntries(job)) yield [`job_${name}`, factor];
+
+        // penalize score linearly after minimum is reached, clipping to NaN
+        // after any maximum
+        const numAssigned = assigned.length;
+        const overAssigned = numAssigned >= maxAssigned
+            ? NaN : Math.max(0, 1 + numAssigned - minAssigned);
+        yield ['assigned', 1/(1 + overAssigned)];
+
+        yield* this.rateCreepTask(creep, task, requirements);
     }
 
     /**
@@ -745,7 +868,7 @@ class Agent {
                 ? creep.store.getFreeCapacity(resource)
                 : creep.store.getFreeCapacity();
             yield [`${resource || ''}CarryFree`, free < min
-                ? NaN
+                ? 0.2 // TODO discouraged due to the only option being "drop it" ; rank up once transfer-to-storage becomes available
                 : 1];
         }
 
@@ -755,16 +878,16 @@ class Agent {
                 ? creep.store.getUsedCapacity(resource)
                 : creep.store.getUsedCapacity();
             yield [`${resource || ''}Have`, have < min
-                ? NaN
+                ? 0.5 // TODO better estimate of prereq cost
                 : 1];
         }
     }
 
     /**
      * @param {Room} room
-     * @returns {Generator<Scored & {task: Task, requirements: TaskRequirements}>}
+     * @returns {Generator<JobData>}
      */
-    *availableRoomTasks(room) {
+    *availableRoomJobs(room) {
         // TODO config from memory
         const maintainControllerDeadline = 2 * ROOM_QUAD;
         const priority = {
@@ -779,6 +902,7 @@ class Agent {
         // TODO clear tombstones... but should those be posted by the reaper?
 
         for (const {id, resourceType} of this.find(room, FIND_DROPPED_RESOURCES)) yield {
+            name: `pickup_${id}`,
             requirements: {
                 parts: [CARRY],
                 capacity: [resourceType], // TODO require capacity for amount?
@@ -795,6 +919,7 @@ class Agent {
             case STRUCTURE_SPAWN:
             case STRUCTURE_EXTENSION:
                 if (struct.store.getFreeCapacity(RESOURCE_ENERGY) > 0) yield {
+                    name: `fillEnergy_${struct.id}`,
                     requirements: {
                         parts: [CARRY],
                         resources: [RESOURCE_ENERGY],
@@ -821,6 +946,7 @@ class Agent {
         }
 
         for (const {id} of this.find(room, FIND_CONSTRUCTION_SITES)) yield {
+            name: `buildThings_${id}`,
             requirements: {
                 parts: [WORK, CARRY],
                 resources: [RESOURCE_ENERGY],
@@ -845,6 +971,7 @@ class Agent {
 
         const ctl = room.controller;
         if (ctl && ctl.my && !ctl.upgradeBlocked) yield {
+            name: `upgradeController_${ctl.id}`,
             requirements: {
                 parts: [WORK, CARRY],
                 resources: [RESOURCE_ENERGY],
@@ -868,7 +995,8 @@ class Agent {
             },
         };
 
-        for (const {id} of this.find(room, FIND_SOURCES_ACTIVE)) yield {
+        for (const {id, energy, energyCapacity} of this.find(room, FIND_SOURCES_ACTIVE)) yield {
+            name: `harvest_${id}`,
             requirements: {
                 parts: [WORK, CARRY],
                 capacity: [RESOURCE_ENERGY],
@@ -889,6 +1017,157 @@ class Agent {
         // TODO harvest minerals
 
         // TODO repair jobs? rampart maintenance? heal jobs? attack jobs? pull jobs? follow jobs?
+    }
+
+    /**
+     * @param {Room} room
+     * @param {number} [updateEvery]
+     */
+    updateRoomJobs(room, updateEvery=10) {
+        room.memory.jobs = this.updateJobs(
+            this.availableRoomJobs(room),
+            room.memory.jobs, {
+                updateEvery,
+                desc: `in room ${room.name}`,
+                debugLevel: this.debugLevel('jobs', room),
+            });
+    }
+
+    /**
+     * @param {Iterable<JobData>} available
+     * @param {Jobs|undefined} jobs
+     * @param {Object} [opts]
+     * @param {number} [opts.updateEvery]
+     * @param {string} [opts.desc]
+     * @param {number} [opts.debugLevel]
+     * @returns {Jobs}
+     */
+    updateJobs(available, jobs, opts={}) {
+        const {
+            updateEvery=1,
+            desc='',
+            debugLevel=this.debugLevel('jobs'),
+        } = opts;
+
+        if (!jobs) jobs = {
+            lastUpdate: NaN,
+            byName: {},
+        };
+
+        const nextUpdate = nanMin(jobs.nextUpdate, jobs.lastUpdate + updateEvery);
+        if (Game.time < nextUpdate) return jobs;
+
+        /** @type {Set<string>} */
+        const seen = new Set();
+        let changed = false;
+
+        for (const newData of available) {
+            const {name} = newData;
+            seen.add(name);
+
+            const job = name in jobs.byName ? jobs.byName[name] : null;
+            const problems = Array.from(this.validateJob(name, job || newData));
+            if (problems.length) {
+                logJob('⚠️', name, `invalid job ${desc} because: ${problems.join('; ')}`);
+                if (job) {
+                    this.destroyJob(job);
+                    delete jobs.byName[name];
+                    changed = true;
+                }
+                continue;
+            }
+
+            if (debugLevel > 1) logJob('🔼', name, `${job ? 'update' : 'new'} job ${desc}`);
+
+            if (job) {
+                jobs.byName[name] = {
+                    ...job,
+                    ...newData,
+                    lastUpdate: Game.time,
+                    generated: true,
+                };
+            } else {
+                jobs.byName[name] = {
+                    ...newData,
+                    createTime: Game.time,
+                    lastUpdate: Game.time,
+                    generated: true,
+                };
+            }
+            changed = true;
+        }
+
+        for (const [name, job] of Object.entries(jobs.byName)) {
+            if (seen.has(name)) continue; // created or updated above
+            if (job.generated // auto-generated job, no longer available
+                // TODO other forms of explicit "done"
+            ) {
+                if (debugLevel) logJob('✅', name, `done ${desc}`);
+            } else {
+                const problems = Array.from(this.validateJob(name, job));
+                if (!problems.length) continue;
+                logJob('⚠️', name, `deleting ${desc} because: ${problems.join('; ')}`);
+            }
+
+            this.destroyJob(job);
+            delete jobs.byName[name];
+            changed = true;
+        }
+
+        if (changed) jobs.lastUpdate = Game.time;
+        jobs.nextUpdate = Object.values(jobs.byName)
+            .map(({deadline, task: {deadline: taskDeadline}}) => nanMin(deadline, taskDeadline))
+            .reduce(nanMin, Game.time + updateEvery);
+
+        return jobs;
+    }
+
+    /**
+     * @param {string} givenName
+     * @param {Job|JobData} job
+     * @returns {Generator<string>}
+     */
+    *validateJob(givenName, job) {
+        const {name, deadline, task} = job;
+
+        // validate fundamental name first
+        if (name != givenName) yield 'given name mismatch';
+
+        // then validate any metadata
+        if ('createTime' in job) {
+            const {createTime, lastUpdate, assigned} = job;
+            if (createTime > Game.time) yield 'job from future';
+            if (lastUpdate > Game.time) yield 'last update from future';
+            if (assigned) {
+                const stillAlive = /** @type {Creep[]} */ (assigned
+                    .map(id => Game.getObjectById(id))
+                    .filter(creep => !!creep));
+                const stillAssigned = stillAlive.filter(({memory: {assigned}}) =>
+                    assigned && isome(taskJobNames(assigned.task), jobName => jobName == givenName));
+                job.assigned = stillAssigned.map(({id}) => id);
+            }
+        }
+
+        // finally validate job spec data
+        if (typeof deadline == 'number' && deadline < Game.time) yield 'deadline expired';
+        const targetId = taskTargetId(task);
+        if (targetId && !Game.getObjectById(targetId)) yield 'target gone';
+    }
+
+    /** @param {Job} job */
+    destroyJob(job) {
+        if (job.assigned) for (const id of job.assigned) {
+            const creep = Game.getObjectById(id);
+            if (!creep) continue;
+            const {memory} = creep;
+            const {assigned} = memory;
+            if (!assigned) continue;
+            let {task=null} = assigned;
+            if (!task) continue;
+            task = taskWithoutJob(task, job.name);
+            if (task) assigned.task = task;
+            else delete memory.assigned;
+        }
     }
 
     /** @type {null|Object<string, number>} */
@@ -1085,6 +1364,14 @@ function taskTargetId(task) {
 }
 
 /**
+ * @param {Job} job
+ * @returns {{resourceType: ResourceConstant, takes?: number}|null}
+ */
+function jobConsumes(job) {
+    return taskConsumes(job.task);
+}
+
+/**
  * @param {Task} task
  * @returns {{resourceType: ResourceConstant, takes?: number}|null}
  */
@@ -1106,6 +1393,14 @@ function taskConsumes(task) {
         default:
             assertNever(task, 'unknown do task provides');
     }
+}
+
+/**
+ * @param {Job} job
+ * @returns {{resourceType: ResourceConstant, avail?: number}|null}
+ */
+function jobProvides(job) {
+    return taskProvides(job.task);
 }
 
 /**
@@ -1156,6 +1451,97 @@ function* storeEntries(store) {
         const resourceType = /** @type {ResourceConstant} */ (key);
         if (typeof have == 'number')
             yield [resourceType, have];
+    }
+}
+
+/**
+ * @param {JobSource} [subject]
+ * @returns {Generator<[JobSource|null, Jobs]>}
+ */
+function *jobSources(subject) {
+    if (subject) {
+        const {memory: {jobs}} = subject;
+        if (jobs) yield [subject, jobs];
+        if ('room' in subject) {
+            const {room} = subject;
+            const {memory: {jobs: roomJobs}} = room;
+            if (roomJobs) yield [room, roomJobs];
+        }
+    }
+    const {jobs: globalJobs} = Memory;
+    if (globalJobs) yield [null, globalJobs];
+}
+
+/**
+ * @param {string} jobName
+ * @param {JobSource} [subject]
+ * @returns {Generator<Job>}
+ */
+function *lookupJob(jobName, subject) {
+    for (const [_source, jobs] of jobSources(subject))
+        if (jobName in jobs.byName)
+            yield jobs.byName[jobName];
+}
+
+/**
+ * @param {Task[]} tasks
+ * @returns {Generator<string>}
+ */
+function *taskJobNames(...tasks) {
+    for (const task of tasks) {
+        const {jobName} = task;
+        if (jobName) yield jobName;
+        const arg = argTask(task.arg);
+        if (arg) yield* taskJobNames(arg);
+        if ('anyOf' in task) yield* taskJobNames(...task.anyOf);
+        if ('allOf' in task) yield* taskJobNames(...task.allOf);
+        if ('ctx' in task && task.ctx)
+            for (const ctxTask of Object.values(task.ctx))
+                yield* taskJobNames(ctxTask);
+        for (const {task: nextTask} of thenTasks(task))
+            yield* taskJobNames(nextTask);
+    }
+}
+
+/**
+ * @template {Task} T
+ * @param {T} task
+ * @param {string} jobName
+ * @returns {T|null}
+ */
+function taskWithoutJob(task, jobName) {
+    if (task.jobName == jobName) return null;
+    const arg = task.arg;
+    if (arg) {
+        if ('task' in arg) {
+            const wotask = taskWithoutJob(arg.task, jobName);
+            if (wotask) task.arg = {task: wotask};
+            else delete task.arg;
+        } else if ('result' in arg) {
+            let {nextTask, ...result} = arg.result;
+            nextTask = nextTask && taskWithoutJob(nextTask, jobName) || undefined;
+            task.arg = {result: {...result, nextTask}};
+        }
+    }
+    if ('anyOf' in task) {
+        task.anyOf = filterTasks(task.anyOf);
+        if (!task.anyOf.length) return null;
+    }
+    if ('ctx' in task && task.ctx)
+        for (const [name, ctxTask] of Object.entries(task.ctx)) {
+            const woctx = taskWithoutJob(ctxTask, jobName);
+            if (woctx) task.ctx[name] = woctx;
+            else delete task.ctx[name];
+        }
+    for (const {task: nextTask, update} of thenTasks(task))
+        update(taskWithoutJob(nextTask, jobName));
+    return task;
+
+    /** @param {Task[]} tasks */
+    function filterTasks(tasks) {
+        return /** @type {Task[]} */ (tasks
+            .map(subTask => taskWithoutJob(subTask, jobName))
+            .filter(subTask => !!subTask));
     }
 }
 
@@ -1314,6 +1700,46 @@ function unpackTaskThen(then) {
     return {ok: then};
 }
 
+/**
+ * @param {Task} task
+ * @returns {Generator<{task: Task, update: (task: Task|null) => void}>}
+ */
+function *thenTasks(task) {
+    for (const {then, update} of taskThens(task)) yield {
+        task: then,
+        update: task => {
+            if (!task) update(null);
+            else update(task);
+        },
+    };
+}
+
+/**
+ * @param {Task} task
+ * @returns {Generator<{then: Task, update: (thenTask: Task|null) => void}>}
+ */
+function *taskThens(task) {
+    if (!task.then) return;
+    const {then} = task;
+    if (!('ok' in then) && !('fail' in then)) {
+        yield {then, update: thenTask => {
+            if (thenTask) task.then = thenTask;
+            else delete task.then;
+        }};
+    } else {
+        if ('ok' in then) yield {then: then.ok, update: thenTask => {
+            if (thenTask) then.ok = thenTask;
+            else if ('fail' in then) task.then = {fail: then.fail};
+            else delete task.then;
+        }};
+        if ('fail' in then) yield {then: then.fail, update: thenTask => {
+            if (thenTask) then.fail = thenTask;
+            else if ('ok' in then) task.then = {ok: then.ok};
+            else delete task.then;
+        }};
+    }
+}
+
 if (Memory.notes == null) Memory.notes = {};
 
 /**
@@ -1338,6 +1764,13 @@ function note(id) {
     Memory.notes[id] = Game.time;
     return true;
 }
+
+/**
+ * @param {string} mark
+ * @param {string} name
+ * @param {any[]} mess
+ */
+function logJob(mark, name, ...mess) { log(mark, 'Jobs', name, ...mess); }
 
 /**
  * @param {string} mark
