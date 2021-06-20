@@ -656,6 +656,21 @@ class Agent {
             fallback = {do: 'drop', resourceType};
         }
 
+        if ('consumes' in seek) {
+            const {consumes: resourceType, min} = seek;
+            const have = Math.min(creep.store.getUsedCapacity(resourceType), min);
+            if (have <= 0) return okResult('seek consumes noop');
+            filters.push(({job, task}) => {
+                const prov
+                    = job ? jobConsumes(job)
+                    : task ? taskConsumes(task)
+                    : null;
+                return prov ? prov.resourceType == resourceType && (
+                    !prov.takes || prov.takes >= have
+                ) : false;
+            });
+        }
+
         if ('scoreOver' in seek) {
             const {scoreOver} = seek;
             filters.push(choice => scoreOf(choice) > scoreOver);
