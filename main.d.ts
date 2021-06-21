@@ -268,6 +268,7 @@ type SeekTask = ThinkTask<"seek"> & {
     | {}
     | {acquire: ResourceConstant}
     | {capacity: ResourceConstant; min: number}
+    | {scoreOver: number}
 );
 
 type FreeCapacityTask = {

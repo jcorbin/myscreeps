@@ -565,6 +565,11 @@ class Agent {
             fallback = {do: 'drop', resourceType};
         }
 
+        if ('scoreOver' in seek) {
+            const {scoreOver} = seek;
+            choices = ifilter(choices, task => scoreOf(task) > scoreOver);
+        }
+
         choices = debugChoices(this.debugLevel('creepTasks', creep), `TaskFor[${creep.name}]`, bestChoice, choices);
         for (const task of choices) {
             const res = this.planCreepTask(creep, task);
