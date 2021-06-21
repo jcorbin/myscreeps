@@ -276,7 +276,7 @@ class Agent {
         if ('do' in task) return this.execCreepAction(creep, task);
         if ('wander' in task) return this.wanderCreep(creep);
 
-        return {ok: false, reason: 'invalid creep task'};
+        assertNever(task, 'invalid creep task');
     }
 
     /**
