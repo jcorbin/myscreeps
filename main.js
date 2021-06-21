@@ -534,6 +534,9 @@ class Agent {
     seekCreepTask(creep, seek) {
         let choices = this.availableCreepTasks(creep);
 
+        /** @type {Task|null} */
+        let fallback = null;
+
         if ('acquire' in seek) {
             const {acquire: resourceType} = seek;
             choices = ifilter(choices, task => {
@@ -547,6 +550,11 @@ class Agent {
         for (const task of choices) {
             const res = this.planCreepTask(creep, task);
             if (res.ok && res.nextTask) return resolveTaskThen(seek, res);
+        }
+
+        if (fallback) {
+            const res = this.planCreepTask({creep, task: fallback});
+            if (res.ok && res.nextTask) return res;
         }
 
         if (seek.must)
