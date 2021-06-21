@@ -477,6 +477,15 @@ class Agent {
     }
 
     /**
+     * @param {Creep} _creep
+     * @param {Task} task
+     * @returns {TaskResult}
+     */
+    planCreepTask(_creep, task) {
+        return {ok: true, reason: 'then the murders began', nextTask: task};
+    }
+
+    /**
      * @param {Creep} creep
      * @param {ReviewTask} [review]
      * @param {ReviewTask} review
@@ -508,7 +517,8 @@ class Agent {
 
         choices = debugChoices(this.debugLevel('creepTasks', creep), `TaskFor[${creep.name}]`, bestChoice, choices);
         for (const task of choices) {
-            return resolveTaskThen(seek, {ok: true, reason: 'choose best task', nextTask: task});
+            const res = this.planCreepTask(creep, task);
+            if (res.ok && res.nextTask) return resolveTaskThen(seek, res);
         }
 
         return null;
