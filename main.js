@@ -546,6 +546,25 @@ class Agent {
             });
         }
 
+        if ('capacity' in seek) {
+            const {capacity: capType, min} = seek;
+            const need = creep.store.getFreeCapacity(capType) - min;
+            if (need <= 0) return {ok: true, reason: 'seek capacity noop'};
+
+            const haves = Array.from(storeEntries(creep.store))
+                .sort(([_ra, a], [_rb, b]) => b - a);
+            if (!haves.length) return {ok: false, reason: 'cannot seek capacity: have nothing'};
+
+            const [resourceType, _have] = haves[0];
+            choices = ifilter(choices, task => {
+                const prov = taskConsumes(task);
+                if (!prov) return false;
+                return prov.resourceType == resourceType;
+            });
+            // TODO transfer to storage before dropping
+            fallback = {do: 'drop', resourceType};
+        }
+
         choices = debugChoices(this.debugLevel('creepTasks', creep), `TaskFor[${creep.name}]`, bestChoice, choices);
         for (const task of choices) {
             const res = this.planCreepTask(creep, task);
@@ -1119,6 +1138,18 @@ function* reqSpecEntries(spec, dflt=0) {
         yield [null, spec];
     else if (spec) for (const item of spec)
         yield Array.isArray(item) ? item : [item, dflt];
+}
+
+/**
+ * @param {StoreDefinition} store
+ * @returns {Generator<[ResourceConstant, number]>}
+ */
+function* storeEntries(store) {
+    for (const [key, have] of Object.entries(store)) {
+        const resourceType = /** @type {ResourceConstant} */ (key);
+        if (typeof have == 'number')
+            yield [resourceType, have];
+    }
 }
 
 const allBodyparts = [
