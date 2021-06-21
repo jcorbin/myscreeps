@@ -264,7 +264,10 @@ type ReviewTask = ThinkTask<"review">;
 // other tasks to do.
 type SeekTask = ThinkTask<"seek"> & {
     must?: boolean;
-};
+} & (
+    | {}
+    | {acquire: ResourceConstant}
+);
 
 type FreeCapacityTask = {
     think: 'freeCapacity';

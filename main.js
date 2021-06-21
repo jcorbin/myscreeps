@@ -534,6 +534,15 @@ class Agent {
     seekCreepTask(creep, seek) {
         let choices = this.availableCreepTasks(creep);
 
+        if ('acquire' in seek) {
+            const {acquire: resourceType} = seek;
+            choices = ifilter(choices, task => {
+                const prov = taskProvides(task);
+                if (!prov) return false;
+                return prov.resourceType == resourceType;
+            });
+        }
+
         choices = debugChoices(this.debugLevel('creepTasks', creep), `TaskFor[${creep.name}]`, bestChoice, choices);
         for (const task of choices) {
             const res = this.planCreepTask(creep, task);
