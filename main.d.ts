@@ -14,7 +14,6 @@ interface CreepMemory {
     lastActed?: number
     debug: DebugLevel;
     task?: AssignedTask;
-    wanderingFor?: number;
 }
 
 interface PowerCreepMemory {
@@ -45,7 +44,6 @@ type Scored = {
 // Task represents a single unit of creep work.
 type Task = (
     | DoTask
-    | WanderTask
 ) & Scored & {
     deadline?: number;
 };
@@ -80,8 +78,10 @@ type DoTask = (
     | TransferTask
     | UpgradeControllerTask
     | PickupTask
+    | WanderTask
 ) & {
     repeat?: {
+        whileCode?: ScreepsReturnCode;
         untilCode?: ScreepsReturnCode;
         untilFull?: ResourceConstant;
         untilEmpty?: ResourceConstant;
@@ -162,12 +162,8 @@ type PickupTask = TargetedTask<Resource> & {
 // TODO suicide task
 // suicide(): OK | ERR_NOT_OWNER | ERR_BUSY;
 
-// WanderTask is a special task, used as default idle behavior, which causes
-// random movement: when a creep has no task available, it takes a WanderTask
-// with a deadline of 5-15 steps. A wandering creep also counts how many total
-// ticks it has wandered for. After this count exceeds 30 ticks, the creep
-// disposes of itself; currently this means immediate suicide, but may
-// eventually involve recycling.
+// WanderTask causes a creep to move randomly.
 type WanderTask = {
-    wander: string; // reason
+    do: 'wander';
+    reason: string;
 }

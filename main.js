@@ -213,30 +213,6 @@ class Agent {
 
     /**
      * @param {Creep} creep
-     * @param {string} reason
-     */
-    disposeCreep(creep, reason) {
-        // TODO task to recycle at nearest spawn
-        this.killCreep(creep, reason);
-    }
-
-    /**
-     * @param {Creep} creep
-     * @param {string} reason
-     */
-    killCreep(creep, reason) {
-        const err = creep.suicide();
-        if (err === OK) {
-            if (this.debugLevel('suicide', creep) > 0) {
-                logCreep('☠️', creep.name, reason);
-            }
-        } else {
-            logCreep('⚠️', creep.name, `suicide failed code: ${err}; reason: ${reason}`);
-        }
-    }
-
-    /**
-     * @param {Creep} creep
      * @returns {boolean}
      */
     runCreepTask(creep) {
@@ -246,13 +222,15 @@ class Agent {
 
         let task = memory.task;
         if (!task) {
-            const choice = this.chooseCreepTask(creep) || {
-                wander: 'unassigned',
+            const newTask = this.chooseCreepTask(creep) || {
+                do: 'wander',
+                reason: 'unassigned',
+                repeat: {whileCode: OK},
                 deadline: Game.time + wanderFor * (0.5 + Math.random()),
             };
             memory.task = task = {
                 assignTime: Game.time,
-                ...choice,
+                ...newTask,
             };
         }
         // logCreep('🙋', name, JSON.stringify(task));
@@ -315,9 +293,8 @@ class Agent {
             return {ok: false, reason: 'deadline expired', deadline};
         }
 
-        if (!('wander' in task)) delete creep.memory.wanderingFor;
-        if ('do' in task) return this.execCreepAction(creep, task);
-        if ('wander' in task) return this.wanderCreep(creep);
+        if ('do' in task)
+            return this.execCreepAction(creep, task);
 
         assertNever(task, 'invalid creep task');
     }
@@ -358,6 +335,10 @@ class Agent {
 
         if (task.repeat.untilEmpty != null &&
             creep.store.getUsedCapacity(task.repeat.untilEmpty) > 0
+        ) return null;
+
+        if (task.repeat.whileCode != null &&
+            code === task.repeat.whileCode
         ) return null;
 
         return {ok: true, reason: `code ${code} (final)`};
@@ -408,33 +389,13 @@ class Agent {
                 target,
             } : {code: ERR_INVALID_TARGET};
 
+        case 'wander':
+            const direction = moveDirections[Math.floor(Math.random() * moveDirections.length)];
+            return {code: creep.move(direction)};
+
         default:
             assertNever(task, 'invalid creep action');
         }
-    }
-
-    /**
-     * @param {Creep} creep
-     * @returns {TaskResult|null}
-     */
-    wanderCreep(creep) {
-        // NOTE update docs on WanderTask with semantics
-        const wanderingFor = (creep.memory.wanderingFor || 0) + 1;
-        creep.memory.wanderingFor = wanderingFor;
-        if (wanderingFor >= 3*wanderFor) {
-            // TODO not past minRoomCreeps
-            this.disposeCreep(creep, `wandered for ${wanderingFor} ticks`);
-            return null;
-        }
-
-        const dir = moveDirections[Math.floor(Math.random() * moveDirections.length)];
-        const err = creep.move(dir);
-        if (err === OK) return null; // keep going until deadline
-        if (err === ERR_NO_BODYPART) {
-            this.killCreep(creep, 'unable to move');
-            return null; // leave task on zombie
-        }
-        return {ok: false, reason: `code: ${err}`};
     }
 
     /**
