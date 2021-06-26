@@ -250,6 +250,7 @@ class Agent {
 
         this.updateAssignedJobs(creep, oldJobNames, new Set());
         if (memory.task) {
+            // TODO explicit vs implicit termination?
             delete memory.task;
         }
         return true;
