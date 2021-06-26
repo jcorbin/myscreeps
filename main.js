@@ -231,6 +231,7 @@ class Agent {
 
         // task yields
         if (!res) {
+            // TODO if (debugLevel > 1) logCreep(...);
             return false;
         }
 
