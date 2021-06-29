@@ -51,6 +51,7 @@ class Agent {
             this.updateRoomJobs(room, NaN);
         }
 
+        // TODO execution limit and/or compute budget management
         let creeps = Object.values(Game.creeps);
         while (creeps.length) creeps = creeps.filter(creep => this.runCreepTask(creep));
 
