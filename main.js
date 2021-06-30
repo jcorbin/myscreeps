@@ -1559,6 +1559,18 @@ function *ifilter(it, fn) {
 /**
  * @template T
  * @param {Iterable<T>} it
+ * @param {(v: T) => boolean} [fn]
+ * @returns {T|null}
+ */
+function ifirst(it, fn) {
+    for (const v of it)
+        if (!fn || fn(v)) return v;
+    return null;
+}
+
+/**
+ * @template T
+ * @param {Iterable<T>} it
  * @param {(v: T) => boolean} fn
  * @returns {boolean}
  */
