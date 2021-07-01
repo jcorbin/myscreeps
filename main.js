@@ -239,6 +239,14 @@ class Agent {
         const {nextTask} = res;
         if (nextTask) {
             memory.task = nextTask;
+
+            // TODO tracing
+            // assigned.task = this.traceTask({
+            //     parent: 'trace' in task ? task : 0,
+            //     task: nextTask,
+            //     assigned,
+            // });
+
             const newJobNames = new Set(taskJobNames(nextTask));
             this.updateAssignedJobs(creep, oldJobNames, newJobNames);
             if (debugLevel > 0) logCreep('⏭', name, JSON.stringify(nextTask));
@@ -256,6 +264,39 @@ class Agent {
         }
         return true;
     }
+
+    // TODO tracing
+    // traceTask(params) {
+    //     const {
+    //         assigned,
+    //         task = assigned.task,
+    //         parent = 0,
+    //         createTime = Game.time,
+    //         lastExec = createTime,
+    //     } = params;
+    //     if ('trace' in task) return task;
+    //     const parentSpan = typeof parent == 'number' ? parent : parent.trace[1];
+    //     const span = ++assigned.lastSpan;
+    //     /** @type {[number, number]} */
+    //     const trace = [parentSpan, span];
+    //     /**
+    //      * @param {number} parent
+    //      * @param {Task} task
+    //      * @returns {void}
+    //      */
+    //     const walk = (parent, task) => {
+    //         const subTasks
+    //             = 'anyOf' in task ? task.anyOf
+    //             : 'allOf' in task ? task.allOf
+    //             : [];
+    //         for (let i = 0; i < subTasks.length; ++i)
+    //             subTasks[i] = this.traceTask({...params, parent, task: subTasks[i]});
+    //         // NOTE execCreepTask provides dynamic tracing of result nextTask
+    //         // for things like: PlanTask, ThenTask and WithTask
+    //     };
+    //     walk(span, task);
+    //     return {trace, createTime, lastExec, task};
+    // }
 
     /**
      * @param {Creep} creep
@@ -275,6 +316,19 @@ class Agent {
     execCreepTaskable(creep, task) {
         if (typeof task == 'function') return task();
 
+        // TODO tracing
+        // if ('trace' in task) {
+        //     task.lastExec = Game.time;
+        //     const {memory: {assigned}} = creep;
+        //     const res = this.execCreepTask(creep, task.task);
+        //     return res && res.nextTask && assigned ? {
+        //         ...res, nextTask: this.traceTask({
+        //             parent: task,
+        //             task: res.nextTask,
+        //             assigned,
+        //         }),
+        //     } : res;
+        // }
 
         if ('anyOf' in task) return this.execCreepSubs(creep, task, task.anyOf,
             (res, i) => {
@@ -539,6 +593,8 @@ class Agent {
             //     this.killCreep(creep, 'unable to move');
             //     return null; // leave task on zombie
             // }
+            // TODO tracing; init tracing task? lastSpan: 0; propagate currently executing tracw,
+            // task = this.traceTask({parent: task.lastSpan, task});
         };
     }
 

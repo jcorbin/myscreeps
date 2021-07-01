@@ -193,6 +193,13 @@ type TaskMeta = Scored & {
 
     // optional operand passed into task execution
     arg?: TaskArg;
+
+    // TODO trace?: {
+    //     parent: number;
+    //     span: number;
+    //     start: number;
+    // };
+
 };
 
 type TaskArg = (
