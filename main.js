@@ -632,6 +632,7 @@ class Agent {
         };
 
         for (const choice of this.availableCreepTasks(creep)) {
+            if (isome(filters, filter => !filter(choice))) continue;
             if (debugLevel > 1)
                 logCreep('...', creep.name, 'choice', JSON.stringify(choice));
             heap.items.push(choice);
@@ -642,7 +643,6 @@ class Agent {
         for (;;) {
             const choice = heappop(heap);
             if (choice === undefined) break;
-            if (isome(filters, filter => !filter(choice))) continue;
             if (debugLevel > 0)
                 logCreep('>>>', creep.name, 'choose', JSON.stringify(choice));
             const {task, job} = choice;
