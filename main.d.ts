@@ -140,6 +140,11 @@ type TaskArg = (
     | {task: Task}
 );
 
+type TaskArgTypes = (
+    | TaskResult
+    | Task
+);
+
 type TaskThen = (
     | Task // same as {ok: Task}
     | {ok: Task}
