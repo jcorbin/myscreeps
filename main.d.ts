@@ -200,6 +200,7 @@ type TaskMeta = Scored & {
     //     start: number;
     // };
 
+    // TODO lastExec?: number;
 };
 
 type TaskArg = (
