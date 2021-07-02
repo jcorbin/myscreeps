@@ -562,7 +562,7 @@ class Agent {
         const {name, memory} = creep;
         const debugLevel = this.debugLevel('creepTasks', creep);
         const {task} = memory;
-        if (!task) return resolveTaskThen(review, {ok: false, reason: 'cannot review unassigned creep'});
+        if (!task) return resolveTaskThen(review, failResult('cannot review unassigned creep'));
         const result = review && argResult(review.arg);
         const mark =
             result && !result.ok ?  '⛔️'
@@ -786,6 +786,7 @@ class Agent {
         // may start another search next tick
         return null;
     }
+
 
     /**
      * @param {Creep} creep
