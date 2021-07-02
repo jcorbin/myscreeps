@@ -626,7 +626,14 @@ class Agent {
             filters.push(choice => scoreOf(choice) > scoreOver);
         }
 
-        for (const choice of debugChoices(debugLevel, `TaskFor[${creep.name}]`, bestChoice, this.availableCreepTasks(creep))) {
+        let choices = this.availableCreepTasks(creep);
+        if (debugLevel > 1)
+            choices = logChoices(`... choice TaskFor[${creep.name}]`, choices);
+        choices = bestChoice(choices);
+        if (debugLevel > 0)
+            choices = logChoices(`>>> choose TaskFor[${creep.name}]`, choices);
+
+        for (const choice of choices) {
             if (isome(filters, filter => !filter(choice))) continue;
             const {task, job} = choice;
             let arg = job ? {jobName: job.name, ...(task || job.task)} : task ? task : null;
@@ -1953,21 +1960,7 @@ function siftdown({items, better}, i, end=items.length-1) {
 
 /**
  * @template T
- * @param {number} level
- * @param {string} name
- * @param {(choices: Iterable<T>) => Iterable<T>} chooser
- * @param {Iterable<T>} choices
- * @returns {Generator<T>}
- */
-function* debugChoices(level, name, chooser, choices) {
-    if (level > 1) choices = logChoices(`... choice ${name}`, choices);
-    choices = chooser(choices);
-    if (level > 0) choices = logChoices(`>>> choose ${name}`, choices);
-    yield* choices;
-}
-
-/**
- * @template T
+ * @template {(Object & Scored)} T
  * @param {string} label
  * @param {Iterable<T>} choices
  * @returns {Generator<T>}
