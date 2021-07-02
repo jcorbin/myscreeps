@@ -532,6 +532,8 @@ class Agent {
      * @returns {TaskResult|null}
      */
     seekCreepTask(creep, seek) {
+        const debugLevel = this.debugLevel('creepTasks', creep);
+
         let choices = this.availableCreepTasks(creep);
 
         /** @type {Task|null} */
@@ -570,7 +572,7 @@ class Agent {
             choices = ifilter(choices, task => scoreOf(task) > scoreOver);
         }
 
-        choices = debugChoices(this.debugLevel('creepTasks', creep), `TaskFor[${creep.name}]`, bestChoice, choices);
+        choices = debugChoices(debugLevel, `TaskFor[${creep.name}]`, bestChoice, choices);
         for (const task of choices) {
             const res = this.planCreepTask(creep, task);
             if (res.ok && res.nextTask) return resolveTaskThen(seek, res);
