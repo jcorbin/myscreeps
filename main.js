@@ -613,6 +613,7 @@ class Agent {
         if (jobName && job) {
             const {
                 requirements: {
+                    // range, TODO for movement planning
                     resources,
                     capacity,
                 } = {},
@@ -642,7 +643,7 @@ class Agent {
                 };
         }
 
-        // TODO plan movement
+        // TODO plan movement ; stepwise over any above ; or add a future "plan to move"?
         // if (range) {
         //     const {pos} = taskTarget(task) || {};
         //     if (pos && creep.pos.getRangeTo(pos) < range) {
