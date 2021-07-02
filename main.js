@@ -254,7 +254,6 @@ class Agent {
         return true;
     }
 
-
     /**
      * @param {Creep} creep
      * @param {Taskable} task
@@ -549,7 +548,7 @@ class Agent {
                 };
         }
 
-        return {ok: true, reason: 'then the murders began', nextTask: planTask};
+        return continueResult(planTask);
     }
 
     /**
