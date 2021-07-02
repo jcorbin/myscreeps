@@ -589,10 +589,12 @@ class Agent {
 
         if ('acquire' in seek) {
             const {acquire: resourceType} = seek;
-            choices = ifilter(choices, ({job}) => {
-                const prov = jobProvides(job);
-                if (!prov) return false;
-                return prov.resourceType == resourceType;
+            choices = ifilter(choices, ({job, task}) => {
+                const prov
+                    = job ? jobProvides(job)
+                    : task ? taskProvides(task)
+                    : null;
+                return prov ? prov.resourceType == resourceType : false;
             });
         }
 
@@ -606,10 +608,12 @@ class Agent {
             if (!haves.length) return {ok: false, reason: 'cannot seek capacity: have nothing'};
 
             const [resourceType, _have] = haves[0];
-            choices = ifilter(choices, ({job}) => {
-                const prov = jobConsumes(job);
-                if (!prov) return false;
-                return prov.resourceType == resourceType;
+            choices = ifilter(choices, ({job, task}) => {
+                const prov
+                    = job ? jobConsumes(job)
+                    : task ? taskConsumes(task)
+                    : null;
+                return prov ? prov.resourceType == resourceType : false;
             });
             // TODO transfer to storage before dropping
             fallback = {do: 'drop', resourceType};
@@ -617,12 +621,13 @@ class Agent {
 
         if ('scoreOver' in seek) {
             const {scoreOver} = seek;
-            choices = ifilter(choices, ({task}) => scoreOf(task) > scoreOver);
+            choices = ifilter(choices, choice => scoreOf(choice) > scoreOver);
         }
 
         choices = debugChoices(debugLevel, `TaskFor[${creep.name}]`, bestChoice, choices);
         for (const {task, job} of choices) {
-            let arg = {jobName: job.name, ...task};
+            let arg = job ? {jobName: job.name, ...(task || job.task)} : task ? task : null;
+            if (!arg) continue;
             const res = this.planCreepTask(creep, arg);
             if (res.ok && res.nextTask) return resolveTaskThen(seek, res);
         }
@@ -743,26 +748,20 @@ class Agent {
 
     /**
      * @param {Creep} creep
-     * @returns {Generator<{job: Job, task: Task}>}
+     * @returns {Generator<SeekChoice>}
      */
     *availableCreepTasks(creep) {
         for (const [source, jobs] of jobSources(creep)) {
             if (source instanceof Room)
                 this.updateRoomJobs(source);
-            yield* imap(
-                this.rateCreepJobs(creep, Object.values(jobs.byName)),
-                ({job}) => {
-                    const {task} = job;
-                    return {job, task};
-                },
-            );
+            yield* this.rateCreepJobs(creep, Object.values(jobs.byName));
         }
     }
 
     /**
      * @param {Creep} creep
      * @param {Iterable<Job>} jobs
-     * @returns {Generator<{job: Job} & Scored>}
+     * @returns {Generator<SeekChoice>}
      */
     *rateCreepJobs(creep, jobs) {
         for (const job of jobs) {

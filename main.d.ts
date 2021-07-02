@@ -312,6 +312,11 @@ type SeekTask = ThinkTask<"seek"> & {
     | {scoreOver: number}
 );
 
+type SeekChoice = Scored & (
+    | {job: Job; task?: Task;}
+    | {job?: Job; task: Task;}
+);
+
 type FreeCapacityTask = {
     think: 'freeCapacity';
     resourceType: ResourceConstant;
