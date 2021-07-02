@@ -1781,6 +1781,15 @@ function continueResult(nextTask, reason='continue') {
 }
 
 /**
+ * @param {number} deadline
+ * @param {Object} [options]
+ * @param {string} [options.reason]
+ */
+function expireResult(deadline, {
+    reason = 'deadline expired',
+}={}) { return {ok: false, reason, deadline}; }
+
+/**
  * @param {Task} task
  * @param {TaskResult|null} res
  * @returns {TaskResult|null}
