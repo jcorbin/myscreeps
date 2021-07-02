@@ -571,7 +571,7 @@ class Agent {
             : '';
         if (mark) logCreep(mark, name, JSON.stringify({result, task}));
         // TODO collect metrics
-        return resolveTaskThen(review, {ok: true, reason: 'reviewed'});
+        return resolveTaskThen(review, okResult('reviewed'));
     }
 
     /**
