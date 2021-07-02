@@ -128,7 +128,17 @@ type TaskMeta = Scored & {
     // On the other hand looping tasks run then.ok as an instanced subtask, 0 or
     // more times, before continuing to their then.fail task.
     then?: TaskThen;
+
+    // optional operand passed into task execution
+    arg?: TaskArg;
 };
+
+type TaskArg = (
+    // prior result
+    | {result: TaskResult}
+    // task operand for certain kinds of higher level thought (e.g. seek -> plan -> assign)
+    | {task: Task}
+);
 
 type TaskThen = (
     | Task // same as {ok: Task}
