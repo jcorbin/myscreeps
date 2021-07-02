@@ -604,11 +604,11 @@ class Agent {
         if ('capacity' in seek) {
             const {capacity: capType, min} = seek;
             const need = creep.store.getFreeCapacity(capType) - min;
-            if (need <= 0) return {ok: true, reason: 'seek capacity noop'};
+            if (need <= 0) return okResult('seek capacity noop');
 
             const haves = Array.from(storeEntries(creep.store))
                 .sort(([_ra, a], [_rb, b]) => b - a);
-            if (!haves.length) return {ok: false, reason: 'cannot seek capacity: have nothing'};
+            if (!haves.length) return failResult('cannot seek capacity: have nothing');
 
             const [resourceType, _have] = haves[0];
             filters.push(({job, task}) => {
@@ -781,7 +781,7 @@ class Agent {
 
         // one search then fail
         if (seek.must)
-            return resolveTaskThen(seek, {ok: false, reason: 'cannot find available task'});
+            return resolveTaskThen(seek, failResult('cannot find available task'));
 
         // may start another search next tick
         return null;
