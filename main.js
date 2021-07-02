@@ -1790,6 +1790,16 @@ function expireResult(deadline, {
 }={}) { return {ok: false, reason, deadline}; }
 
 /**
+ * @param {ScreepsReturnCode} code
+ * @param {Object} [options]
+ * @param {boolean} [options.ok]
+ * @returns {TaskResult}
+ */
+function codeResult(code, {
+    ok = code === OK,
+}={}) { return {code, ok, reason: `code ${code}`}; }
+
+/**
  * @param {Task} task
  * @param {TaskResult|null} res
  * @returns {TaskResult|null}
