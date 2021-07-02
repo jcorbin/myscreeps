@@ -1753,6 +1753,16 @@ function maxActiveBodypart(creep) {
 }
 
 /**
+ * @param {string} reason
+ * @param {Object} [options]
+ * @param {Task|null} [options.nextTask]
+ * @returns {TaskResult}
+ */
+function okResult(reason, {nextTask}={}) {
+    return {ok: true, reason, nextTask: nextTask || undefined};
+}
+
+/**
  * @param {Task} task
  * @param {TaskResult|null} res
  * @returns {TaskResult|null}
