@@ -1773,6 +1773,14 @@ function failResult(reason, {nextTask}={}) {
 }
 
 /**
+ * @param {Task} nextTask
+ * @param {string} [reason]
+ */
+function continueResult(nextTask, reason='continue') {
+    return {ok: true, reason, nextTask};
+}
+
+/**
  * @param {Task} task
  * @param {TaskResult|null} res
  * @returns {TaskResult|null}
