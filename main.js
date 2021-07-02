@@ -453,14 +453,15 @@ class Agent {
 
     /**
      * @param {Creep} creep
-     * @param {TaskResult} [result]
+     * @param {ReviewTask} [review]
      * @returns {TaskResult|null}
      */
-    reviewCreepTask(creep, result) {
+    reviewCreepTask(creep, review) {
         const {name, memory} = creep;
         const debugLevel = this.debugLevel('creepTasks', creep);
         const {task} = memory;
         if (!task) return {ok: false, reason: 'cannot review unassigned creep'};
+        const result = review && argResult(review.arg);
         const mark =
             result && !result.ok ?  '⛔️'
             : debugLevel > 0
