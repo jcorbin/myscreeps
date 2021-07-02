@@ -1763,6 +1763,16 @@ function okResult(reason, {nextTask}={}) {
 }
 
 /**
+ * @param {string} reason
+ * @param {Object} [options]
+ * @param {Task|null} [options.nextTask]
+ * @returns {TaskResult}
+ */
+function failResult(reason, {nextTask}={}) {
+    return {ok: false, reason, nextTask: nextTask || undefined};
+}
+
+/**
  * @param {Task} task
  * @param {TaskResult|null} res
  * @returns {TaskResult|null}
