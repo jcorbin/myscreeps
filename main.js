@@ -582,14 +582,16 @@ class Agent {
     seekCreepTask(creep, seek) {
         const debugLevel = this.debugLevel('creepTasks', creep);
 
-        let choices = this.availableCreepTasks(creep);
+        /** @type {((choice: SeekChoice) => boolean)[]} */
+        const filters = [
+        ];
 
         /** @type {Task|null} */
         let fallback = null;
 
         if ('acquire' in seek) {
             const {acquire: resourceType} = seek;
-            choices = ifilter(choices, ({job, task}) => {
+            filters.push(({job, task}) => {
                 const prov
                     = job ? jobProvides(job)
                     : task ? taskProvides(task)
@@ -608,7 +610,7 @@ class Agent {
             if (!haves.length) return {ok: false, reason: 'cannot seek capacity: have nothing'};
 
             const [resourceType, _have] = haves[0];
-            choices = ifilter(choices, ({job, task}) => {
+            filters.push(({job, task}) => {
                 const prov
                     = job ? jobConsumes(job)
                     : task ? taskConsumes(task)
@@ -621,11 +623,12 @@ class Agent {
 
         if ('scoreOver' in seek) {
             const {scoreOver} = seek;
-            choices = ifilter(choices, choice => scoreOf(choice) > scoreOver);
+            filters.push(choice => scoreOf(choice) > scoreOver);
         }
 
-        choices = debugChoices(debugLevel, `TaskFor[${creep.name}]`, bestChoice, choices);
-        for (const {task, job} of choices) {
+        for (const choice of debugChoices(debugLevel, `TaskFor[${creep.name}]`, bestChoice, this.availableCreepTasks(creep))) {
+            if (isome(filters, filter => !filter(choice))) continue;
+            const {task, job} = choice;
             let arg = job ? {jobName: job.name, ...(task || job.task)} : task ? task : null;
             if (!arg) continue;
             const res = this.planCreepTask(creep, arg);
