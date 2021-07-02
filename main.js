@@ -626,15 +626,25 @@ class Agent {
             filters.push(choice => scoreOf(choice) > scoreOver);
         }
 
-        let choices = this.availableCreepTasks(creep);
-        if (debugLevel > 1)
-            choices = logChoices(`... choice TaskFor[${creep.name}]`, choices);
-        choices = bestChoice(choices);
-        if (debugLevel > 0)
-            choices = logChoices(`>>> choose TaskFor[${creep.name}]`, choices);
+        const heap = {
+            items: [],
+            better: betterItemScore,
+        };
 
-        for (const choice of choices) {
+        for (const choice of this.availableCreepTasks(creep)) {
+            if (debugLevel > 1)
+                logCreep('...', creep.name, 'choice', JSON.stringify(choice));
+            heap.items.push(choice);
+        }
+
+        heapify(heap);
+
+        for (;;) {
+            const choice = heappop(heap);
+            if (choice === undefined) break;
             if (isome(filters, filter => !filter(choice))) continue;
+            if (debugLevel > 0)
+                logCreep('>>>', creep.name, 'choose', JSON.stringify(choice));
             const {task, job} = choice;
             let arg = job ? {jobName: job.name, ...(task || job.task)} : task ? task : null;
             if (!arg) continue;
@@ -1955,20 +1965,6 @@ function siftdown({items, better}, i, end=items.length-1) {
         if (!better(items, child, root)) break;
         [items[root], items[child]] = [items[child], items[root]];
         root = child;
-    }
-}
-
-/**
- * @template T
- * @template {(Object & Scored)} T
- * @param {string} label
- * @param {Iterable<T>} choices
- * @returns {Generator<T>}
- */
-function* logChoices(label, choices) {
-    for (const choice of choices) {
-        console.log(`${label} ${JSON.stringify(choice)}`);
-        yield choice;
     }
 }
 
