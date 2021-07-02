@@ -511,7 +511,7 @@ class Agent {
      * @returns {TaskResult}
      */
     planCreepTask(creep, task) {
-        if (!task) return {ok: false, reason: 'untasked'};
+        if (!task) return failResult('untasked');
 
         let planTask = task;
 
