@@ -2164,17 +2164,6 @@ function isome(it, fn) {
 }
 
 /**
- * @template A,B
- * @param {Iterable<A>} it
- * @param {(v: A) => B} fn
- * @returns {Generator<B>}
- */
-function *imap(it, fn) {
-    for (const v of it)
-        yield fn(v);
-}
-
-/**
  * @param {never} _
  * @param {string} [mess]
  * @returns {never}
