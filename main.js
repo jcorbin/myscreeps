@@ -646,7 +646,9 @@ class Agent {
             // if (jobSource == null)
 
             for (const job of Object.values(jobs.byName)) {
-                const scored = collectScores(this.rateCreepJob(creep, job));
+                const scored = debugLevel > 1
+                    ? collectScores(this.rateCreepJob(creep, job))
+                    : {score: collectScore(this.rateCreepJob(creep, job))};
                 const choice = {job, ...scored};
                 if (isome(filters, filter => !filter(choice))) continue;
                 if (debugLevel > 1)
@@ -1839,6 +1841,18 @@ function scoreOf(object) {
             ? Object.values(scoreFactors)
                 .reduce((a, b) => a * b, 1)
             : 0;
+    }
+    return score;
+}
+
+/**
+ * @param {Iterable<[string, number]>} factorEntries
+ * @returns {number}
+ */
+function collectScore(factorEntries) {
+    let score = 1;
+    for (const [_name, factor] of factorEntries) {
+        score *= factor;
     }
     return score;
 }
