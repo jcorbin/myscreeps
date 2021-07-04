@@ -607,6 +607,8 @@ class Agent {
     planCreepTask(creep, task) {
         if (!task) return failResult('untasked');
 
+        // TODO plan any/all sub tasks
+
         let planTask = task;
 
         const {jobName} = task;
