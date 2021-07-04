@@ -119,6 +119,7 @@ class Agent {
 
     /** @param {Room} room */
     spawnCreepsIn(room) {
+        // TODO convert to tasked spawn execution; this gets replaced by their SeekTask
         for (const {spawn, parts, name} of bestChoice(this.designCreepsIn(room))) {
             const res = spawn.spawnCreep(parts, name); // TODO support energyStructures
             if (res == OK) {
