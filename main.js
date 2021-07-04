@@ -854,6 +854,43 @@ function makeTaskThen(ok, fail) {
 
 /**
  * @param {TaskThen} [then]
+ * @param {Task} task
+ * @returns {Task|undefined}
+ */
+function taskThenOk(task) {
+    return task.then && thenOk(task.then);
+}
+
+/**
+ * @param {Task} task
+ * @returns {Task|undefined}
+ */
+function taskThenFail(task) {
+    return task.then && thenFail(task.then);
+}
+
+/**
+ * @param {TaskThen} then
+ * @returns {Task|undefined}
+ */
+function thenOk(then) {
+    return ('ok' in then) ? then.ok
+         : ('fail' in then) ? undefined
+         : then;
+}
+
+/**
+ * @param {TaskThen} then
+ * @returns {Task|undefined}
+ */
+function thenFail(then) {
+    return ('ok' in then) ? then.ok
+         : ('fail' in then) ? undefined
+         : then;
+}
+
+/**
+ * @param {TaskThen} [then]
  * @returns {{ok?: Task, fail?: Task}}
  */
 function unpackTaskThen(then) {
