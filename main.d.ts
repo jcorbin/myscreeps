@@ -305,12 +305,33 @@ type ReviewTask = ThinkTask<"review">;
 // other tasks to do.
 type SeekTask = ThinkTask<"seek"> & {
     must?: boolean;
+    sources?: SeekSource[];
+    queue?: SeekQueueRef[];
 } & (
     | {}
     | {acquire: ResourceConstant}
     | {capacity: ResourceConstant; min: number}
     | {scoreOver: number}
 );
+
+type SeekSource = {
+    id?: SeekSourceId;
+    readTime?: number;
+    entries: SeekEntry[];
+};
+
+type SeekSourceId = (
+    | {type: 'global'}
+    | {type: 'room', name: string}
+    | {type: 'creep', name: string}
+);
+
+type SeekEntry = Scored & (
+    | {jobName: string}
+    | SeekChoice
+);
+
+type SeekQueueRef = [sourceI: number, entryI: number];
 
 type SeekChoice = Scored & (
     | {job: Job; task?: Task;}

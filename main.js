@@ -627,15 +627,85 @@ class Agent {
             filters.push(choice => scoreOf(choice) > scoreOver);
         }
 
-        const heap = {
-            /** @type {SeekChoice[]} */
-            items: [],
-            better: betterItemScore,
-        };
+        if (!seek.sources) {
+            seek.sources = [
+                {entries: []}, // sources[0] is a virtual "source-less source"
+            ];
+            const source = seek.sources[0];
+            if (fallback) source.entries.push({
+                task: fallback,
+                score: 0,
+            });
+        }
+        const sources = seek.sources;
 
-        // TODO steal from other creeps
+        const init = !seek.queue;
+        const heap = {
+            items: seek.queue || [],
+
+            /**
+             * @param {SeekQueueRef[]} refs
+             * @param {number} i
+             * @param {number} j
+             */
+            better(refs, i, j) {
+                const a = deref(refs[i]);
+                const b = deref(refs[j]);
+                return scoreOf(a) > scoreOf(b);
+            },
+
+            invalid: true, // assume any prior queue is valid ; nil heap is valid
+        };
+        if (init) {
+            // TODO steal from other creeps (before? in addition to?) iterating job sources
+            enqueue(0);
+            if (!heap.invalid) seek.queue = heap.items;
+        }
+
+        /** @param {number} sourceI */
+        function enqueue(sourceI) {
+            const entries = sources[sourceI].entries;
+            if (!entries.length) return;
+            if (debugLevel > 1) for (const ent of entries)
+                logCreep('...', creep.name, 'seek enqueue', JSON.stringify(ent));
+            heap.items = [...heap.items, ...entries.map(
+                (_ent, entryI) => /** @type {SeekQueueRef} */ ([sourceI, entryI])
+            )];
+            heap.invalid = heap.items.length > 1; // empty and singleton heaps are valid
+        }
+
+        /** @param {number} sourceI */
+        function dequeue(sourceI) {
+            let some = false;
+            heap.items = heap.items.filter(ref => {
+                if (ref[0] == sourceI) {
+                    if (debugLevel > 1)
+                        logCreep('...', creep.name, 'seek dequeue', JSON.stringify(deref(ref)));
+                    some = true;
+                    return false;
+                }
+                return true;
+            });
+            if (some) heap.invalid = heap.items.length > 1; // empty and singleton heaps are valid
+        }
+
+        /** @param {SeekQueueRef} ref */
+        function deref([sourceI, entryI]) {
+            const source = sources[sourceI];
+            return source.entries[entryI];
+        }
 
         for (const [jobSource, jobs] of jobSources(creep)) {
+            const sourceId = jobSourceId(jobSource);
+            let {source, sourceI} =
+                ifirst(sources
+                    .map((source, sourceI) => ({source, sourceI}))
+                    .filter(({source: {id}}) => id && sourceIdEqual(id, sourceId)))
+                || {source: {id: sourceId, entries: []}, sourceI: NaN};
+            if (source.readTime && jobs.lastUpdate <= source.readTime) continue;
+            if (isNaN(sourceI)) sourceI = sources.push(source) - 1;
+            else dequeue(sourceI);
+
             if (jobSource instanceof Room)
                 this.updateRoomJobs(jobSource);
 
@@ -645,40 +715,62 @@ class Agent {
             // if (jobSource instanceof Room) jobSource === creep.room ?
             // if (jobSource == null)
 
-            for (const job of Object.values(jobs.byName)) {
+            const entries = [];
+            for (const [jobName, job] of Object.entries(jobs.byName)) {
                 const scored = debugLevel > 1
                     ? collectScores(this.rateCreepJob(creep, job))
                     : {score: collectScore(this.rateCreepJob(creep, job))};
                 const choice = {job, ...scored};
                 if (isome(filters, filter => !filter(choice))) continue;
-                if (debugLevel > 1)
-                    logCreep('...', creep.name, 'choice', JSON.stringify(choice));
-                heap.items.push(choice);
+                entries.push(choice);
             }
+            source.entries = entries;
+            source.readTime = Game.time;
+            enqueue(sourceI);
         }
 
-        heapify(heap);
+        sources.forEach((source, sourceI) => {
+            const {id, readTime} = source;
+
+            // skip virtual sources, like sources[0]
+            if (!id) return;
+
+            // updated by the loop above
+            if (readTime && readTime >= Game.time) return;
+
+            dequeue(sourceI);
+            source.entries = [];
+        });
+
+        if (heap.invalid) {
+            heapify(heap);
+            seek.queue = heap.items;
+        }
 
         for (;;) {
-            const choice = heappop(heap);
-            if (choice === undefined) break;
+            const ref = heappop(heap);
+            if (ref === undefined) break;
+
+            const ent = deref(ref);
+            if (debugLevel > 1)
+                logCreep('>>>', creep.name, 'seek popped', JSON.stringify(ent));
+
+            const jobName = seekEntryJobName(ent);
+
+            let task = seekEntryTask(ent, creep);
+            if (!task) continue;
+            task = {jobName, ...task};
             if (debugLevel > 0)
-                logCreep('>>>', creep.name, 'choose', JSON.stringify(choice));
-            const {task, job} = choice;
-            let arg = job ? {jobName: job.name, ...(task || job.task)} : task ? task : null;
-            if (!arg) continue;
-            const res = this.planCreepTask(creep, arg);
+                logCreep('>>>', creep.name, 'seek candidate', JSON.stringify(task));
+            const res = this.planCreepTask(creep, task);
             if (res.ok && res.nextTask) return resolveTaskThen(seek, res);
         }
 
-        if (fallback) {
-            const res = this.planCreepTask(creep, fallback);
-            if (res.ok && res.nextTask) return res;
-        }
-
+        // one search then fail
         if (seek.must)
             return resolveTaskThen(seek, {ok: false, reason: 'cannot find available task'});
 
+        // may start another search next tick
         return null;
     }
 
@@ -1493,6 +1585,67 @@ function *lookupJob(jobName, subject) {
     for (const [_source, jobs] of jobSources(subject))
         if (jobName in jobs.byName)
             yield jobs.byName[jobName];
+}
+
+/**
+ * @param {JobSource|null} jobSource
+ * @returns {SeekSourceId}
+ */
+function jobSourceId(jobSource) {
+    if (!jobSource) return {type: 'global'}
+    if (jobSource instanceof Room)
+        return {type: 'room', name: jobSource.name};
+    if (jobSource instanceof Creep)
+        return {type: 'creep', name: jobSource.name};
+    assertNever(jobSource, 'unimplemented JobSource -> SeekSourceId type');
+}
+
+/**
+ * @param {SeekSourceId} a
+ * @param {SeekSourceId} b
+ * @returns {boolean}
+ */
+function sourceIdEqual(a, b) {
+    switch (a.type) {
+        case 'room': return b.type == 'room' && a.name == b.name;
+        case 'creep': return b.type == 'creep' && a.name == b.name;
+        case 'global': return b.type == 'global';
+        default: assertNever(a, 'unimplemented SeekSourceId equality type');
+    }
+}
+
+/**
+ * @param {SeekEntry} ent
+ * @returns {string}
+ */
+function seekEntryJobName(ent) {
+    if ('jobName' in ent) return ent.jobName;
+    if (ent.job) return ent.job.name;
+    if (ent.task && ent.task.jobName) return ent.task.jobName;
+    return '';
+}
+
+/**
+ * @param {SeekEntry} ent
+ * @param {JobSource} [subject]
+ */
+function seekEntryJob(ent, subject) {
+    return 'job' in ent && ent.job ? ent.job
+        : 'jobName' in ent ? ifirst(lookupJob(ent.jobName, subject))
+        : null;
+}
+
+/**
+ * @param {SeekEntry} ent
+ * @param {JobSource} [subject]
+ * @returns {Task|null}
+ */
+function seekEntryTask(ent, subject) {
+    const task = 'task' in ent ? ent.task : undefined;
+    if (task) return task;
+    const job = seekEntryJob(ent, subject);
+    if (job) return job.task;
+    return null;
 }
 
 /**
