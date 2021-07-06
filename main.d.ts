@@ -307,6 +307,7 @@ type SeekTask = ThinkTask<"seek"> & {
     must?: boolean;
     sources?: SeekSource[];
     queue?: SeekQueueRef[];
+    triedJobs?: string[];
 } & (
     | {}
     | {acquire: ResourceConstant}

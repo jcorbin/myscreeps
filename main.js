@@ -695,6 +695,7 @@ class Agent {
             return source.entries[entryI];
         }
 
+        const tried = new Set(seek.triedJobs);
         const queueJobNames = new Set(heap.items
             .map(([i, j]) => seekEntryJobName(sources[i].entries[j]))
             .filter(s => s.length));
@@ -726,6 +727,7 @@ class Agent {
                     : {score: collectScore(this.rateCreepJob(creep, job))};
                 const choice = {job, ...scored};
                 if (isome(filters, filter => !filter(choice))) continue;
+                if (tried.has(jobName)) continue;
                 if (queueJobNames.has(jobName)) continue;
                 queueJobNames.add(jobName);
                 entries.push(choice);
@@ -753,6 +755,8 @@ class Agent {
             seek.queue = heap.items;
         }
 
+        seek.triedJobs = [...tried];
+
         for (;;) {
             const ref = heappop(heap);
             if (ref === undefined) break;
@@ -762,6 +766,9 @@ class Agent {
                 logCreep('>>>', creep.name, 'seek popped', JSON.stringify(ent));
 
             const jobName = seekEntryJobName(ent);
+            if (tried.has(jobName)) continue;
+            tried.add(jobName);
+            seek.triedJobs.push(jobName);
 
             let task = seekEntryTask(ent, creep);
             if (!task) continue;
