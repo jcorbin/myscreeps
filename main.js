@@ -695,6 +695,10 @@ class Agent {
             return source.entries[entryI];
         }
 
+        const queueJobNames = new Set(heap.items
+            .map(([i, j]) => seekEntryJobName(sources[i].entries[j]))
+            .filter(s => s.length));
+
         for (const [jobSource, jobs] of jobSources(creep)) {
             const sourceId = jobSourceId(jobSource);
             let {source, sourceI} =
@@ -722,6 +726,8 @@ class Agent {
                     : {score: collectScore(this.rateCreepJob(creep, job))};
                 const choice = {job, ...scored};
                 if (isome(filters, filter => !filter(choice))) continue;
+                if (queueJobNames.has(jobName)) continue;
+                queueJobNames.add(jobName);
                 entries.push(choice);
             }
             source.entries = entries;
