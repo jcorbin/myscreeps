@@ -11,6 +11,7 @@ interface Memory {
 }
 
 interface CreepMemory {
+    lastActed?: number
     debug: DebugLevel;
     task?: AssignedTask;
     wanderingFor?: number;

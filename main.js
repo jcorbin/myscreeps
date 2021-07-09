@@ -305,6 +305,10 @@ class Agent {
      * @returns {TaskResult|null}
      */
     execCreepAction(creep, task) {
+        // yield if the creep has already acted this turn
+        if (hasActed(creep)) return null;
+        creep.memory.lastActed = Game.time;
+
         const {code, target} = this.dispatchCreepAction(creep, task);
         switch (code) {
 
@@ -690,6 +694,12 @@ class CreepDesign {
         }
         return n;
     }
+}
+
+/** @param {Creep} creep */
+function hasActed(creep, since=Game.time) {
+    const {memory: {lastActed}} = creep;
+    return lastActed != null && lastActed >= since;
 }
 
 if (Memory.notes == null) Memory.notes = {};
