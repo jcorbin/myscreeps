@@ -138,10 +138,12 @@ type ActionTask = (
 );
 
 type MentalTask = (
+    | PlanTask
     | ReviewTask
     | SeekTask
-    | FreeCapacityTask
+    | TerminateTask
     | HaveResourceTask
+    | FreeCapacityTask
 );
 
 type TaskMeta = Scored & {
@@ -312,6 +314,10 @@ type ThinkTask<Thought extends string> = {
     think: Thought;
 } & TaskMeta;
 
+type PlanTask = {
+    think: 'plan';
+};
+
 // ReviewTask implements observability during and after task execution.
 type ReviewTask = ThinkTask<"review">;
 
@@ -353,6 +359,11 @@ type SeekChoice = Scored & (
     | {job: Job; task?: Task;}
     | {job?: Job; task: Task;}
 );
+
+type TerminateTask = {
+    think: 'terminate';
+    reason: string;
+};
 
 type FreeCapacityTask = {
     think: 'freeCapacity';

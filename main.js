@@ -256,13 +256,11 @@ class Agent {
 
 
         // task done
-        this.reviewCreepTask(creep, res); // final review
-
-        this.updateAssignedJobs(creep, oldJobNames, new Set());
         if (memory.task) {
-            // TODO explicit vs implicit termination?
+            // TODO note unexpected/implicit termination
             delete memory.task;
         }
+        this.updateAssignedJobs(creep, oldJobNames, new Set());
         return true;
     }
 
@@ -331,6 +329,7 @@ class Agent {
         //     } : res;
         // }
 
+        // TODO arg thru?
         if ('anyOf' in task) return this.execCreepSubs(creep, task, task.anyOf,
             (res, i) => {
                 const {ok, reason} = res;
@@ -348,6 +347,7 @@ class Agent {
             },
         );
 
+        // TODO arg thru?
         if ('allOf' in task) return this.execCreepSubs(creep, task, task.allOf,
             (res, i) => {
                 const {ok, reason} = res;
@@ -539,11 +539,17 @@ class Agent {
     execCreepThought(creep, task) {
         switch (task.think) {
 
+            case 'plan':
+                return this.planCreepTask(creep, task);
+
             case 'review':
                 return this.reviewCreepTask(creep, task);
 
             case 'seek':
                 return this.seekCreepTask(creep, task);
+
+            case 'terminate':
+                return this.terminateCreepTask(creep, task);
 
             case 'haveResource':
                 return this.execCreepTaskLoop(creep, task, () => {
@@ -580,10 +586,14 @@ class Agent {
                 time: Game.time,
                 then: {
                     think: 'seek',
-                    then: {fail: {
-                        timeout: 30,
-                        then: {do: 'wander', reason: 'idle'},
-                    }},
+                    then: {
+                        ok: {think: 'plan'},
+                        // TODO into plan tail: appendTaskThen(newTask, {think: 'terminate', reason: 'done'});
+                        fail: {
+                            timeout: 30,
+                            then: {do: 'wander', reason: 'idle'},
+                        },
+                    },
                 },
             },
             // TODO then: {fail: {dispose: 'wandered too long'}},
@@ -601,10 +611,12 @@ class Agent {
 
     /**
      * @param {Creep} creep
-     * @param {Task} [task]
+     * @param {Task} [plan]
      * @returns {TaskResult}
      */
-    planCreepTask(creep, task) {
+    planCreepTask(creep, plan) { return withTaskTail(plan, () => {
+        const task = argTask(plan.arg);
+
         if (!task) return failResult('untasked');
 
         // TODO plan any/all sub tasks
@@ -628,8 +640,10 @@ class Agent {
                 planTask = {
                     jobName,
                     think: 'freeCapacity', resourceType, min, then: {
-                        fail: {jobName, think: 'seek', must: true, capacity: resourceType, min, then: planTask},
-                        // TODO loop back to freeCapacity for multi-step
+                        fail: {
+                            jobName, think: 'seek', must: true, capacity: resourceType, min,
+                            then: {think: 'plan'},
+                        },
                         ok: planTask,
                     },
                 };
@@ -639,8 +653,10 @@ class Agent {
                 planTask = {
                     jobName,
                     think: 'haveResource', resourceType, min, then: {
-                        fail: {jobName, think: 'seek', must: true, acquire: resourceType, then: planTask},
-                        // TODO loop back to haveResource for multi-step
+                        fail: {
+                            jobName, think: 'seek', must: true, acquire: resourceType,
+                            then: {think: 'plan'},
+                        },
                         ok: planTask,
                     },
                 };
@@ -662,8 +678,12 @@ class Agent {
         //     }
         // }
 
-        return continueResult(planTask);
-    }
+        appendTaskThen(planTask, {jobName, think: 'review'});
+
+        // the planned task is the result, passed as argument into any
+        // plan.then successor, or executed directly if !plan.then
+        return planTask;
+    }) }
 
     /**
      * @param {Creep} creep
@@ -689,11 +709,29 @@ class Agent {
 
     /**
      * @param {Creep} creep
+     * @param {TerminateTask} term
+     * @returns {TaskResult|null}
+     */
+    terminateCreepTask(creep, term) {
+        const {memory} = creep;
+        delete memory.assigned;
+        let task = argTask(term.arg);
+        if (task && term.then) task = appendTaskThen(task, term.then);
+        const arg = makeArg(task, argResult(term.arg));
+        return arg
+            ? continueResult({think: 'assign', arg})
+            : okResult(term.reason);
+    }
+
+    /**
+     * @param {Creep} creep
      * @param {SeekTask} seek
      * @returns {TaskResult|null}
      */
     seekCreepTask(creep, seek) {
         const debugLevel = this.debugLevel('creepTasks', creep);
+
+        // TODO map argTask(plan) consumes / provides? better score than?
 
         /** @type {((choice: SeekChoice) => boolean)[]} */
         const filters = [
@@ -883,36 +921,63 @@ class Agent {
             seek.queue = heap.items;
         }
 
-        seek.triedJobs = [...tried];
+        const seekRes = this.execCreepTaskCtx(creep, seek, 'branch', () => {
+            seek.triedJobs = [...tried];
 
-        for (;;) {
-            const ref = heappop(heap);
-            if (ref === undefined) break;
+            for (;;) {
+                const ref = heappop(heap);
+                if (ref === undefined) break;
 
-            const ent = deref(ref);
-            if (debugLevel > 1)
-                logCreep('>>>', creep.name, 'seek popped', JSON.stringify(ent));
+                const ent = deref(ref);
+                if (debugLevel > 1)
+                    logCreep('>>>', creep.name, 'seek popped', JSON.stringify(ent));
 
-            const jobName = seekEntryJobName(ent);
-            if (tried.has(jobName)) continue;
-            tried.add(jobName);
-            seek.triedJobs.push(jobName);
+                const jobName = seekEntryJobName(ent);
+                if (tried.has(jobName)) continue;
+                tried.add(jobName);
+                seek.triedJobs.push(jobName);
 
-            let task = seekEntryTask(ent, creep);
-            if (!task) continue;
-            task = {jobName, ...task};
-            if (debugLevel > 0)
-                logCreep('>>>', creep.name, 'seek candidate', JSON.stringify(task));
-            const res = this.planCreepTask(creep, task);
-            if (res.ok && res.nextTask) return resolveTaskThen(seek, res);
+                let task = seekEntryTask(ent, creep);
+                if (!task) continue;
+                task = {jobName, ...task};
+                if (debugLevel > 0)
+                    logCreep('>>>', creep.name, 'seek candidate', JSON.stringify(task));
+
+                // TODO (long shot) if we could spy on the planned job, and
+                // then compare its actual score vs expected, the next
+                // candidate might actually be better... otoh, maybe that's
+                // better suited to a "keep seeking for a better task,
+                // while working on this one"
+
+                // TODO similar to resolveTaskThen
+                const thenOk = taskThenOk(seek);
+                return continueResult(thenOk
+                    ? {...thenOk, arg: {task}}
+                    : task // TODO wants to be tailCall(task)
+                );
+            }
+
+            // one search then fail
+            if (seek.must)
+                return failResult('cannot find available task');
+
+            // may start another search next tick
+            return null;
+        });
+
+        // execute then.fail as an idle task between yields
+        if (!seekRes) {
+            const idleRes = this.execCreepTaskCtx(creep, seek, 'idle', taskThenFail(seek));
+            return idleRes && !idleRes.ok ? idleRes : null;
         }
 
-        // one search then fail
-        if (seek.must)
-            return resolveTaskThen(seek, failResult('cannot find available task'));
+        // when the seek fails without a defined continuation, execute
+        // then.fail (or continue a prior idle execution of then.fail)
+        const {ok, nextTask} = seekRes;
+        const ctxIdle = seek.ctx && seek.ctx['idle'] || taskThenFail(seek);
+        if (!ok && !nextTask && ctxIdle) seekRes.nextTask = ctxIdle;
 
-        // may start another search next tick
-        return null;
+        return seekRes;
     }
 
 
@@ -945,15 +1010,19 @@ class Agent {
      */
     execCreepAction(creep, task) {
         // yield if the creep has already acted this turn
-        if (hasActed(creep)) return null;
+        if (hasActed(creep)) return null; // TODO track by category (too)?
         creep.memory.lastActed = Game.time;
 
+        // NOTE this is basically an adaptor from WorldResult => TaskResult
+        // with added domain specific code handling ; there may be utility to
+        // unifying a WorldResult with TaskResult, then leaving such handling
+        // up to an outer layer
         const {code, target} = this.dispatchCreepAction(creep, task);
 
         // TODO decouple into a wrapper/loop task?
         if (code === ERR_NOT_IN_RANGE) {
-            if (!target) return resolveTaskThen(task, {ok: false, reason: 'no target'});
-            creep.moveTo(target);
+            if (!target) return resolveTaskThen(task, failResult('no target'));
+            creep.moveTo(target); // TODO disposal if can't, similar to wandering
             return null;
         }
 
@@ -964,6 +1033,7 @@ class Agent {
      * @param {Creep} creep
      * @param {ActionTask} task
      * @returns {{code: ScreepsReturnCode, target?: RoomObject}}
+     * TODO maybe adapt/unify return type up to TaskResult
      */
     dispatchCreepAction(creep, task) {
         let target = null;
@@ -1332,6 +1402,7 @@ class Agent {
             if (debugLevel > 1) logJob('🔼', name, `${job ? 'update' : 'new'} job ${desc}`);
 
             if (job) {
+                // TODO noop if job/newData no diff
                 jobs.byName[name] = {
                     ...job,
                     ...newData,
@@ -1735,6 +1806,51 @@ function *lookupJob(jobName, subject) {
             yield jobs.byName[jobName];
 }
 
+// /**
+//  * @param {Task} task
+//  * @returns {TaskArg}
+//  */
+// function taskArg(task) { return {task}; }
+
+// /**
+//  * @param {TaskResult} result
+//  * @returns {TaskArg}
+//  */
+// function resultArg(result) { return {result}; }
+
+/**
+ * @param {TaskArg|undefined} arg
+ * @returns {Task|undefined}
+ */
+function argTask(arg) {
+    if (!arg) return;
+    if ('task' in arg) return arg.task;
+    if ('result' in arg) return arg.result.nextTask;
+    return;
+}
+
+/**
+ * @param {TaskArg|undefined} arg
+ * @returns {TaskResult|undefined}
+ */
+function argResult(arg) {
+    if (!arg) return;
+    if ('result' in arg) return arg.result;
+    return;
+}
+
+/**
+ * @param {(TaskArgTypes|undefined)[]} values
+ * @returns {TaskArg|undefined}
+ */
+function makeArg(...values) {
+    for (const value of values) if (value) {
+        if ('ok' in value) return {result: value};
+        else return {task: value};
+    }
+    return;
+}
+
 /**
  * @param {JobSource|null} jobSource
  * @returns {SeekSourceId}
@@ -1938,6 +2054,7 @@ function expireResult(deadline, {
 function codeResult(code, {
     ok = code === OK,
 }={}) { return {code, ok, reason: `code ${code}`}; }
+
 
 /**
  * @param {Task} task
