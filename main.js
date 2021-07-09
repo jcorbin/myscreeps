@@ -1490,6 +1490,18 @@ function* logChoices(label, choices) {
 }
 
 /**
+ * @template T
+ * @param {Iterable<T>} it
+ * @param {(v: T) => boolean} fn
+ * @returns {Generator<T>}
+ */
+function *ifilter(it, fn) {
+    for (const v of it)
+        if (fn(v))
+            yield v;
+}
+
+/**
  * @param {never} _
  * @param {string} [mess]
  * @returns {never}
