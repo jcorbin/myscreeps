@@ -639,6 +639,12 @@ class Agent {
             if (jobSource instanceof Room)
                 this.updateRoomJobs(jobSource);
 
+            // TODO jobSource priority factor
+            // if (jobSource === this)
+            // if (jobSource instanceof Creep)
+            // if (jobSource instanceof Room) jobSource === creep.room ?
+            // if (jobSource == null)
+
             for (const job of Object.values(jobs.byName)) {
                 const scored = collectScores(this.rateCreepJob(creep, job));
                 const choice = {job, ...scored};
