@@ -49,6 +49,22 @@ type Task = (
     deadline?: number;
 };
 
+// TaskResult represents completion of a Task, successful or failed.
+type TaskResult = {
+    // ok is true only if the task succeeded
+    ok: boolean;
+
+    // reason contains a description of any failure, and may provide flavor to
+    // successful results.
+    reason: string;
+
+    // deadline, if defined, indicates that this (presumably failed) result was
+    // due to an expired deadline. This field is meaningless if set on an
+    // ok=true result, and also redundant, since the producer can just as well
+    // change any remaining nextTask.deadline.
+    deadline?: number;
+};
+
 // DoTask represents concrete action that affects the shared world.
 // There are categorical limits concerning which actions may be concurrently
 // performed per-creep-tick; TODO afford such limits, see docs for now.

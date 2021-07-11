@@ -253,7 +253,8 @@ class Agent {
         // logCreep('🙋', creep.name, JSON.stringify(task));
 
         const res = this.execCreepTask(creep, task);
-        if (res == null) return;
+        if (!res) return;
+
         if (this.debugLevel('creepTasks', creep) > 0) {
             if (res.ok) {
                 logCreep('✅', creep.name, JSON.stringify(task));
@@ -283,7 +284,7 @@ class Agent {
     /**
      * @param {Creep} creep
      * @param {Task} task
-     * @returns {{ok: boolean, reason: string, deadline?: number}|null}
+     * @returns {TaskResult|null}
      */
     execCreepTask(creep, task) {
         const {deadline} = task;
@@ -301,7 +302,7 @@ class Agent {
     /**
      * @param {Creep} creep
      * @param {DoTask} task
-     * @returns {{ok: boolean, reason: string}|null}
+     * @returns {TaskResult|null}
      */
     execCreepAction(creep, task) {
         const {code, target} = this.dispatchCreepAction(creep, task);
@@ -385,7 +386,10 @@ class Agent {
         }
     }
 
-    /** @param {Creep} creep */
+    /**
+     * @param {Creep} creep
+     * @returns {TaskResult|null}
+     */
     wanderCreep(creep) {
         // NOTE update docs on WanderTask with semantics
         const wanderingFor = (creep.memory.wanderingFor || 0) + 1;
