@@ -584,6 +584,7 @@ class Agent {
 
         /** @type {((choice: SeekChoice) => boolean)[]} */
         const filters = [
+            choice => scoreOf(choice) >= 0,
         ];
 
         /** @type {Task|null} */
@@ -632,11 +633,18 @@ class Agent {
             better: betterItemScore,
         };
 
-        for (const choice of this.availableCreepTasks(creep)) {
-            if (isome(filters, filter => !filter(choice))) continue;
-            if (debugLevel > 1)
-                logCreep('...', creep.name, 'choice', JSON.stringify(choice));
-            heap.items.push(choice);
+        for (const [jobSource, jobs] of jobSources(creep)) {
+            if (jobSource instanceof Room)
+                this.updateRoomJobs(jobSource);
+
+            for (const job of Object.values(jobs.byName)) {
+                const scored = collectScores(this.rateCreepJob(creep, job));
+                const choice = {job, ...scored};
+                if (isome(filters, filter => !filter(choice))) continue;
+                if (debugLevel > 1)
+                    logCreep('...', creep.name, 'choice', JSON.stringify(choice));
+                heap.items.push(choice);
+            }
         }
 
         heapify(heap);
@@ -764,32 +772,6 @@ class Agent {
 
         default:
             assertNever(task, 'invalid creep action');
-        }
-    }
-
-    /**
-     * @param {Creep} creep
-     * @returns {Generator<SeekChoice>}
-     */
-    *availableCreepTasks(creep) {
-        for (const [source, jobs] of jobSources(creep)) {
-            if (source instanceof Room)
-                this.updateRoomJobs(source);
-            yield* this.rateCreepJobs(creep, Object.values(jobs.byName));
-        }
-    }
-
-    /**
-     * @param {Creep} creep
-     * @param {Iterable<Job>} jobs
-     * @returns {Generator<SeekChoice>}
-     */
-    *rateCreepJobs(creep, jobs) {
-        for (const job of jobs) {
-            const scored = collectScores(this.rateCreepJob(creep, job));
-            const score = scoreOf(scored);
-            if (isNaN(score) || score <= 0) continue;
-            yield {job, ...scored};
         }
     }
 
