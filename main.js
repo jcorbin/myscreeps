@@ -627,6 +627,7 @@ class Agent {
         }
 
         const heap = {
+            /** @type {SeekChoice[]} */
             items: [],
             better: betterItemScore,
         };
