@@ -64,6 +64,11 @@ type TaskResult = {
     // ok=true result, and also redundant, since the producer can just as well
     // change any remaining nextTask.deadline.
     deadline?: number;
+
+    // nextTask indicates that task execution continues in another task.
+    // The caller may execute a nextTask in either the current tick or a future
+    // one at its discretion.
+    nextTask?: Task;
 };
 
 // DoTask represents concrete action that affects the shared world.

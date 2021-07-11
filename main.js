@@ -255,6 +255,17 @@ class Agent {
         const res = this.execCreepTask(creep, task);
         if (!res) return;
 
+        const {nextTask} = res;
+        if (nextTask) {
+            const {assignTime} = task;
+            task = {...nextTask, assignTime};
+            creep.memory.task = task;
+            if (this.debugLevel('creepTasks', creep) > 0) {
+                logCreep('⏭', creep.name, JSON.stringify(task));
+            }
+            return;
+        }
+
         if (this.debugLevel('creepTasks', creep) > 0) {
             if (res.ok) {
                 logCreep('✅', creep.name, JSON.stringify(task));
