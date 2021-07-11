@@ -633,6 +633,8 @@ class Agent {
             better: betterItemScore,
         };
 
+        // TODO steal from other creeps
+
         for (const [jobSource, jobs] of jobSources(creep)) {
             if (jobSource instanceof Room)
                 this.updateRoomJobs(jobSource);
