@@ -253,17 +253,7 @@ class Agent {
         }
 
         // task done
-        if (debugLevel > 0) {
-            const {task} = memory;
-            if (res.ok) {
-                logCreep('✅', name, JSON.stringify(task));
-            } else if (res.deadline != null) {
-                logCreep('⏰', name, res.reason, JSON.stringify(task), `deadline: T${res.deadline}`);
-            } else {
-                logCreep('🤔', name, res.reason, JSON.stringify(task));
-            }
-        }
-        // TODO collect management data
+        this.reviewCreepTask(creep, res); // final review
         if (memory.task) {
             delete memory.task;
         }
@@ -459,6 +449,26 @@ class Agent {
             if (!Object.keys(task.sub).length) delete task.sub;
         }
         return res;
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {TaskResult} [result]
+     * @returns {TaskResult|null}
+     */
+    reviewCreepTask(creep, result) {
+        const {name, memory} = creep;
+        const debugLevel = this.debugLevel('creepTasks', creep);
+        const {task} = memory;
+        if (!task) return {ok: false, reason: 'cannot review unassigned creep'};
+        const mark =
+            result && !result.ok ?  '⛔️'
+            : debugLevel > 0
+            ? (!result ? '🤔' : '✅')
+            : '';
+        if (mark) logCreep(mark, name, JSON.stringify({result, task}));
+        // TODO collect metrics
+        return {ok: true, reason: 'reviewed'};
     }
 
     /**
