@@ -263,6 +263,8 @@ class Agent {
 
         if ('do' in task)
             return this.execCreepAction(creep, task);
+        if ('think' in task)
+            return this.execCreepThought(creep, task);
 
         if ('time' in task) {
             const exec = Game.time;
@@ -419,6 +421,19 @@ class Agent {
             if (!Object.keys(task.sub).length) delete task.sub;
         }
         return res;
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {Task|null} [argTask]
+     * @param {MentalTask} task
+     * @returns {TaskResult|null}
+     */
+    execCreepThought(creep, task) {
+        switch (task.think) {
+            default:
+                assertNever(task, 'invalid creep thought');
+        }
     }
 
     /**

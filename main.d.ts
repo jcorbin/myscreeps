@@ -44,6 +44,7 @@ type Taskable = (
 
 type Task = (
     | ActionTask
+    | MentalTask
     | SleepTask
     | TimedTask
     | TimeoutTask
@@ -83,6 +84,10 @@ type ActionTask = (
     | UpgradeControllerTask
     | PickupTask
     | WanderTask
+);
+
+type MentalTask = (
+    | never
 );
 
 type TaskMeta = Scored & {
@@ -232,6 +237,12 @@ type BooleanAlgebra<Clause> = (
     | {or: BooleanAlgebra<Clause>[]}
     | {not: BooleanAlgebra<Clause>}
 );
+
+// ThinkTask represents computation work that only affects memory.
+// Only the CPU limit affects how many such tasks may execute per-creep-tick.
+type ThinkTask<Thought extends string> = {
+    think: Thought;
+} & TaskMeta;
 
 // DoTask represents concrete action that affects the shared world.
 // There are categorical limits concerning which actions may be concurrently
