@@ -220,24 +220,7 @@ class Agent {
         if (spawning) return false;
         const debugLevel = this.debugLevel('creepTasks', creep);
 
-        const res = this.execCreepTask(creep, memory.task || (() => {
-            const newTask = this.chooseCreepTask(creep) || {
-                timeout: wanderFor * (0.5 + Math.random()),
-                then: {
-                    do: 'wander',
-                    reason: 'unassigned',
-                    repeat: {whileCode: OK},
-                },
-            };
-            return {
-                ok: true,
-                reason: 'creep task init',
-                nextTask: {
-                    time: Game.time,
-                    then: newTask,
-                },
-            };
-        }));
+        const res = this.execCreepTask(creep, memory.task || (() => this.initCreepTask(creep)));
 
         // task yields
         if (!res) {
@@ -449,6 +432,35 @@ class Agent {
             if (!Object.keys(task.sub).length) delete task.sub;
         }
         return res;
+    }
+
+    /**
+     * @param {Creep} creep
+     * @returns {TaskResult|null}
+     */
+    initCreepTask(creep) {
+        const {name} = creep;
+        const debugLevel = this.debugLevel('creepTasks', creep);
+
+        const newTask = this.chooseCreepTask(creep) || {
+            timeout: wanderFor * (0.5 + Math.random()),
+            then: {
+                do: 'wander',
+                reason: 'unassigned',
+                repeat: {whileCode: OK},
+            },
+        };
+
+        if (debugLevel > 0) logCreep('🙋', name, JSON.stringify(newTask));
+
+        return {
+            ok: true,
+            reason: 'creep task init',
+            nextTask: {
+                time: Game.time,
+                then: newTask,
+            },
+        };
     }
 
     /**
