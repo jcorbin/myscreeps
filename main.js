@@ -290,13 +290,10 @@ class Agent {
     execCreepTask(creep, task) {
         if (typeof task == 'function') return task();
         const {deadline} = task;
-        if (deadline != null && deadline < Game.time) {
-            return {ok: false, reason: 'deadline expired', deadline};
-        }
-
+        if (deadline != null && deadline < Game.time)
+            return resolveTaskThen(task, {ok: false, reason: 'deadline expired', deadline});
         if ('do' in task)
             return this.execCreepAction(creep, task);
-
         assertNever(task, 'invalid creep task');
     }
 
@@ -314,7 +311,7 @@ class Agent {
 
         // TODO decouple into a wrapper/loop task?
         if (code === ERR_NOT_IN_RANGE) {
-            if (!target) return {ok: false, reason: 'no target'};
+            if (!target) return resolveTaskThen(task, {ok: false, reason: 'no target'});
             creep.moveTo(target);
             return null;
         }
@@ -322,7 +319,7 @@ class Agent {
         if (code != OK || !task.repeat) {
             const expected = task.repeat && task.repeat.untilCode;
             const ok = code === OK || code === expected;
-            return {code, ok, reason: `code ${code}`};
+            return resolveTaskThen(task, {code, ok, reason: `code ${code}`});
         }
 
         if (task.repeat.untilFull != null &&
@@ -337,7 +334,7 @@ class Agent {
             code === task.repeat.whileCode
         ) return null;
 
-        return {code, ok: true, reason: `code ${code} (final)`};
+        return resolveTaskThen(task, {code, ok: true, reason: `code ${code} (final)`});
     }
 
     /**
@@ -680,6 +677,95 @@ class CreepDesign {
 function hasActed(creep, since=Game.time) {
     const {memory: {lastActed}} = creep;
     return lastActed != null && lastActed >= since;
+}
+
+/**
+ * @param {Task} task
+ * @param {TaskResult|null} res
+ * @returns {TaskResult|null}
+ */
+function resolveTaskThen(task, res) {
+    return resolveThen(task.then, res);
+}
+
+/**
+ * @param {TaskThen|undefined} then
+ * @param {TaskResult|null} res
+ * @returns {TaskResult|null}
+ */
+function resolveThen(then, res) {
+    if (!then || !res) return res;
+    const {nextTask: resTask, ...result} = res;
+    return {...result, nextTask: resTask
+        ? appendTaskThen(resTask, then)
+        : chooseThenTask(then, res.ok)};
+}
+
+/**
+ * @param {TaskThen} then
+ * @param {boolean} resOk
+ * @returns {Task|undefined}
+ */
+function chooseThenTask(then, resOk) {
+    const {ok, fail} = unpackTaskThen(then);
+    return resOk ? ok : fail;
+}
+
+/**
+ * @param {Task} task
+ * @param {TaskThen} then
+ * @returns {Task}
+ */
+function appendTaskThen(task, then) {
+    const {ok: thenOk, fail: thenFail} = unpackTaskThen(then);
+    let tip = task;
+    while (tip.then) {
+        const {ok, fail} = unpackTaskThen(tip.then);
+        if (ok) {
+            tip.then = makeTaskThen(ok, fail);
+            tip = ok;
+        } else {
+            if (fail && thenFail) {
+                if (thenOk) tip.then = {ok: thenOk, fail};
+                appendTaskThen(fail, {fail: thenFail});
+            } else {
+                tip.then = makeTaskThen(thenOk, fail || thenFail);
+            }
+            return task;
+        }
+    }
+    tip.then = then;
+    return task;
+}
+
+/**
+ * @param {Task|undefined} ok
+ * @param {Task|undefined} fail
+ * @returns {TaskThen|undefined}
+ */
+function makeTaskThen(ok, fail) {
+    if (ok && fail) return {ok, fail};
+    else if (ok) return ok;
+    else if (fail) return {fail};
+    return undefined;
+}
+
+/**
+ * @param {TaskThen} [then]
+ * @returns {{ok?: Task, fail?: Task}}
+ */
+function unpackTaskThen(then) {
+    if (!then) return {};
+    if ('ok' in then) {
+        const {ok} = then;
+        const fail = 'fail' in then ? then.fail : undefined;
+        return {ok, fail};
+    }
+    if ('fail' in then) {
+        const {fail} = then;
+        return {fail};
+    }
+    return {ok: then};
 }
 
 if (Memory.notes == null) Memory.notes = {};

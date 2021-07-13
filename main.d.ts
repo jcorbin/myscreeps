@@ -63,7 +63,40 @@ type TaskMeta = Scored & {
     // deadline is an optional future game tick after which this task should no
     // longer execute
     deadline?: number;
+
+    // then specifies subsequent task(s) to be executed in relation to a
+    // containing task's execution:
+    // - an "ok" task to execute when the containing task succeeds
+    // - a "fail" task to execute otherwise
+    // - both "ok" and "fail" taksk are optional, but at least one must be
+    //   specified if the then field is defined
+    // - as a convenient shorthand, if only an "ok" task is necessary, it may
+    //   be assigned directly to the then field
+    //
+    // Execution semantics are up to each particular task implementation,
+    // allowing other control flow semantics like looping tasks or search
+    // tasks, which may choose to execute any defined then tasks 0, 1 or many
+    // times and perhaps in a subordinate manner, rather than passing control
+    // flow to them.
+    //
+    // Normative execution semantics are to resolve TaskResult.nextTask when
+    // task execution returns a result (does not yield by retuning null):
+    // - if the task continues (by returning a result with a nextTask field)
+    //   append the task's then clause; i.e. "then is deferred until after any
+    //   continuation chain finishes"
+    // - otherwise the task result has its nextTask field populated by any
+    //   appropriate then choice; i.e. "execution may continue to a relevant
+    //   then branch"
+    // - all concrete ActionTasks use normative semantics
+    then?: TaskThen;
 };
+
+type TaskThen = (
+    | Task // same as {ok: Task}
+    | {ok: Task}
+    | {fail: Task}
+    | {ok: Task; fail: Task}
+);
 
 // TaskResult represents completion of a Task, successful or failed.
 type TaskResult = {
