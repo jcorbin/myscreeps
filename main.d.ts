@@ -87,7 +87,8 @@ type ActionTask = (
 );
 
 type MentalTask = (
-    | never
+    | ReviewTask
+    | SeekTask
 );
 
 type TaskMeta = Scored & {
@@ -243,6 +244,13 @@ type BooleanAlgebra<Clause> = (
 type ThinkTask<Thought extends string> = {
     think: Thought;
 } & TaskMeta;
+
+// ReviewTask implements observability during and after task execution.
+type ReviewTask = ThinkTask<"review">;
+
+// SeekTask is a "looking for work" task, causing the creep to look for
+// other tasks to do.
+type SeekTask = ThinkTask<"seek">;
 
 // DoTask represents concrete action that affects the shared world.
 // There are categorical limits concerning which actions may be concurrently

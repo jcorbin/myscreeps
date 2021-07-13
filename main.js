@@ -7,7 +7,6 @@ const ROOM_QUAD = ROOM_WIDTH * ROOM_HEIGHT;
 
 const minRoomCreeps = 2;
 const minSpawnProgressP = 0.1;
-const wanderFor = 10;
 
 /** @type {DirectionConstant[]} */
 const moveDirections = [
@@ -431,37 +430,34 @@ class Agent {
      */
     execCreepThought(creep, task) {
         switch (task.think) {
+
+            case 'review':
+                return this.reviewCreepTask(creep, task);
+
+            case 'seek':
+                return this.seekCreepTask(creep, task);
+
             default:
                 assertNever(task, 'invalid creep thought');
         }
     }
 
     /**
-     * @param {Creep} creep
+     * @param {Creep} _creep
      * @returns {TaskResult|null}
      */
-    initCreepTask(creep) {
-        const {name} = creep;
-        const debugLevel = this.debugLevel('creepTasks', creep);
-
-        const seekRes = this.seekCreepTask(creep);
-        const newTask = seekRes && seekRes.nextTask || {
-            timeout: wanderFor * (0.5 + Math.random()),
-            then: {
-                do: 'wander',
-                reason: 'unassigned',
-                repeat: {whileCode: OK},
-            },
-        };
-
-        if (debugLevel > 0) logCreep('🙋', name, JSON.stringify(newTask));
-
+    initCreepTask(_creep) {
         return {
             ok: true,
             reason: 'creep task init',
             nextTask: {
                 time: Game.time,
-                then: newTask,
+                then: {
+                    think: 'seek',
+                    then: {
+                        fail: {do: 'wander', reason: 'idle'},
+                    },
+                },
             },
         };
     }
@@ -469,13 +465,14 @@ class Agent {
     /**
      * @param {Creep} creep
      * @param {ReviewTask} [review]
+     * @param {ReviewTask} review
      * @returns {TaskResult|null}
      */
     reviewCreepTask(creep, review) {
         const {name, memory} = creep;
         const debugLevel = this.debugLevel('creepTasks', creep);
         const {task} = memory;
-        if (!task) return {ok: false, reason: 'cannot review unassigned creep'};
+        if (!task) return resolveTaskThen(review, {ok: false, reason: 'cannot review unassigned creep'});
         const result = review && argResult(review.arg);
         const mark =
             result && !result.ok ?  '⛔️'
@@ -484,19 +481,22 @@ class Agent {
             : '';
         if (mark) logCreep(mark, name, JSON.stringify({result, task}));
         // TODO collect metrics
-        return {ok: true, reason: 'reviewed'};
+        return resolveTaskThen(review, {ok: true, reason: 'reviewed'});
     }
 
     /**
      * @param {Creep} creep
+     * @param {SeekTask} seek
      * @returns {TaskResult|null}
      */
-    seekCreepTask(creep) {
+    seekCreepTask(creep, seek) {
         let choices = this.availableCreepTasks(creep);
+
         choices = debugChoices(this.debugLevel('creepTasks', creep), `TaskFor[${creep.name}]`, bestChoice, choices);
         for (const task of choices) {
-            return {ok: true, reason: 'choose best task', nextTask: task};
+            return resolveTaskThen(seek, {ok: true, reason: 'choose best task', nextTask: task});
         }
+
         return null;
     }
 
