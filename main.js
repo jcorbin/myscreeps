@@ -245,19 +245,6 @@ class Agent {
 
     /**
      * @param {Creep} creep
-     * @returns {Task|null}
-     */
-    chooseCreepTask(creep) {
-        let choices = this.availableCreepTasks(creep);
-        choices = debugChoices(this.debugLevel('creepTasks', creep), `TaskFor[${creep.name}]`, bestChoice, choices);
-        for (const task of choices) {
-            return task;
-        }
-        return null;
-    }
-
-    /**
-     * @param {Creep} creep
      * @param {Taskable} task
      * @returns {TaskResult|null}
      */
@@ -442,7 +429,8 @@ class Agent {
         const {name} = creep;
         const debugLevel = this.debugLevel('creepTasks', creep);
 
-        const newTask = this.chooseCreepTask(creep) || {
+        const seekRes = this.seekCreepTask(creep);
+        const newTask = seekRes && seekRes.nextTask || {
             timeout: wanderFor * (0.5 + Math.random()),
             then: {
                 do: 'wander',
@@ -481,6 +469,19 @@ class Agent {
         if (mark) logCreep(mark, name, JSON.stringify({result, task}));
         // TODO collect metrics
         return {ok: true, reason: 'reviewed'};
+    }
+
+    /**
+     * @param {Creep} creep
+     * @returns {TaskResult|null}
+     */
+    seekCreepTask(creep) {
+        let choices = this.availableCreepTasks(creep);
+        choices = debugChoices(this.debugLevel('creepTasks', creep), `TaskFor[${creep.name}]`, bestChoice, choices);
+        for (const task of choices) {
+            return {ok: true, reason: 'choose best task', nextTask: task};
+        }
+        return null;
     }
 
     /**
