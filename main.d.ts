@@ -41,10 +41,22 @@ type Scored = {
     score?: number;
 };
 
-// Task represents a single unit of creep work.
 type Task = (
-    | DoTask
-) & Scored & {
+    | ActionTask
+);
+
+type ActionTask = (
+    | BuildTask
+    | HarvestTask
+    | TransferTask
+    | UpgradeControllerTask
+    | PickupTask
+    | WanderTask
+);
+
+type TaskMeta = Scored & {
+    // deadline is an optional future game tick after which this task should no
+    // longer execute
     deadline?: number;
 };
 
@@ -72,98 +84,82 @@ type TaskResult = {
 // DoTask represents concrete action that affects the shared world.
 // There are categorical limits concerning which actions may be concurrently
 // performed per-creep-tick; TODO afford such limits, see docs for now.
-type DoTask = (
-    | BuildTask
-    | HarvestTask
-    | TransferTask
-    | UpgradeControllerTask
-    | PickupTask
-    | WanderTask
-) & {
+type DoTask<Action extends string> = {
+    do: Action;
     repeat?: {
         whileCode?: ScreepsReturnCode;
         untilCode?: ScreepsReturnCode;
         untilFull?: ResourceConstant;
         untilEmpty?: ResourceConstant;
     };
-};
+} & TaskMeta;
 
 type TargetedTask<T extends RoomObject> = {
     targetId: Id<T>;
 };
 
-type BuildTask = TargetedTask<ConstructionSite> & {
-    // build(target: ConstructionSite): CreepActionReturnCode | ERR_NOT_ENOUGH_RESOURCES | ERR_RCL_NOT_ENOUGH;
-    do: "build";
-}
+// build(target: ConstructionSite): CreepActionReturnCode | ERR_NOT_ENOUGH_RESOURCES | ERR_RCL_NOT_ENOUGH;
+type BuildTask = DoTask<"build"> & TargetedTask<ConstructionSite>;
 
-type HarvestTask = TargetedTask<Source | Mineral | Deposit> & {
-    // harvest(target: Source | Mineral | Deposit): CreepActionReturnCode | ERR_NOT_FOUND | ERR_NOT_ENOUGH_RESOURCES;
-    do: "harvest";
-}
+// harvest(target: Source | Mineral | Deposit): CreepActionReturnCode | ERR_NOT_FOUND | ERR_NOT_ENOUGH_RESOURCES;
+type HarvestTask = DoTask<"harvest"> & TargetedTask<Source | Mineral | Deposit>;
 
-type TransferTask = TargetedTask<AnyCreep | Structure> & {
-    // transfer(target: AnyCreep | Structure, resourceType: ResourceConstant, amount?: number): ScreepsReturnCode;
-    do: "transfer";
+// transfer(target: AnyCreep | Structure, resourceType: ResourceConstant, amount?: number): ScreepsReturnCode;
+type TransferTask = DoTask<"transfer"> & TargetedTask<AnyCreep | Structure> & {
     resourceType: ResourceConstant;
     amount?: number;
-}
+};
 
-// TODO WithdrawTask similar to TransferTask
 // withdraw(target: Structure | Tombstone | Ruin, resourceType: ResourceConstant, amount?: number): ScreepsReturnCode;
+// TODO WithdrawTask similar to TransferTask
 
-type UpgradeControllerTask = TargetedTask<StructureController> & {
-    // upgradeController(target: StructureController): ScreepsReturnCode;
-    do: 'upgradeController';
-}
+// upgradeController(target: StructureController): ScreepsReturnCode;
+type UpgradeControllerTask = DoTask<"upgradeController"> & TargetedTask<StructureController>;
 
-type PickupTask = TargetedTask<Resource> & {
-    // pickup(target: Resource): CreepActionReturnCode | ERR_FULL;
-    do: "pickup";
-}
+// pickup(target: Resource): CreepActionReturnCode | ERR_FULL;
+type PickupTask = DoTask<"pickup"> & TargetedTask<Resource>;
 
-// TODO DropTask
 // drop(resourceType: ResourceConstant, amount?: number): OK | ERR_NOT_OWNER | ERR_BUSY | ERR_NOT_ENOUGH_RESOURCES;
+// TODO DropTask
 
-// TODO more controller tasks
 // attackController(target: StructureController): CreepActionReturnCode;
 // claimController(target: StructureController): CreepActionReturnCode | ERR_FULL | ERR_GCL_NOT_ENOUGH;
 // generateSafeMode(target: StructureController): CreepActionReturnCode;
 // reserveController(target: StructureController): CreepActionReturnCode;
 // signController(target: StructureController, text: string): OK | ERR_BUSY | ERR_INVALID_TARGET | ERR_NOT_IN_RANGE;
+// TODO more controller tasks
 
-// TODO general structure tasks like dismantle and repair
 // dismantle(target: Structure): CreepActionReturnCode;
 // repair(target: Structure): CreepActionReturnCode | ERR_NOT_ENOUGH_RESOURCES;
+// TODO general structure tasks like dismantle and repair
 
-// TODO basic combat tasks
 // attack(target: AnyCreep | Structure): CreepActionReturnCode;
 // rangedAttack(target: AnyCreep | Structure): CreepActionReturnCode;
 // rangedMassAttack(): OK | ERR_NOT_OWNER | ERR_BUSY | ERR_NO_BODYPART;
+// TODO basic combat tasks
 
-// TODO healer tasks
 // heal(target: AnyCreep): CreepActionReturnCode;
 // rangedHeal(target: AnyCreep): CreepActionReturnCode;
+// TODO healer tasks
 
-// TODO tasks for pull and be-pulled
 // move(target: Creep): OK | ERR_NOT_OWNER | ERR_BUSY | ERR_NOT_IN_RANGE | ERR_INVALID_ARGS;
 // pull(target: Creep): OK | ERR_NOT_OWNER | ERR_BUSY | ERR_INVALID_TARGET | ERR_NOT_IN_RANGE | ERR_NO_BODYPART;
+// TODO tasks for pull and be-pulled
 
-// TODO planned movement task
 // moveByPath(path: PathStep[] | RoomPosition[] | string): CreepMoveReturnCode | ERR_NOT_FOUND | ERR_INVALID_ARGS;
+// TODO planned movement task
 
-// TODO targeted movement task
 // moveTo(target: RoomPosition | { pos: RoomPosition }, opts?: MoveToOpts): CreepMoveReturnCode | ERR_NO_PATH | ERR_INVALID_TARGET | ERR_NOT_FOUND;
 // moveTo(x: number, y: number, opts?: MoveToOpts): CreepMoveReturnCode | ERR_NO_PATH | ERR_INVALID_TARGET;
+// TODO targeted movement task
 
-// TODO directional movement task
 // move(direction: DirectionConstant): CreepMoveReturnCode;
+// TODO directional movement task
 
-// TODO suicide task
 // suicide(): OK | ERR_NOT_OWNER | ERR_BUSY;
+// TODO suicide task
 
 // WanderTask causes a creep to move randomly.
-type WanderTask = {
-    do: 'wander';
+type WanderTask = DoTask<"wander"> & {
     reason: string;
-}
+};

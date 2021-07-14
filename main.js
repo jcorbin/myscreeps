@@ -301,7 +301,7 @@ class Agent {
 
     /**
      * @param {Creep} creep
-     * @param {DoTask} task
+     * @param {ActionTask} task
      * @returns {TaskResult|null}
      */
     execCreepAction(creep, task) {
@@ -346,7 +346,7 @@ class Agent {
 
     /**
      * @param {Creep} creep
-     * @param {DoTask} task
+     * @param {ActionTask} task
      * @returns {{code: ScreepsReturnCode, target?: RoomObject}}
      */
     dispatchCreepAction(creep, task) {
