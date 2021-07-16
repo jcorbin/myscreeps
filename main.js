@@ -222,10 +222,12 @@ class Agent {
 
         const res = this.execCreepTask(creep, memory.task || (() => {
             const newTask = this.chooseCreepTask(creep) || {
-                do: 'wander',
-                reason: 'unassigned',
-                repeat: {whileCode: OK},
-                deadline: Game.time + wanderFor * (0.5 + Math.random()),
+                timeout: wanderFor * (0.5 + Math.random()),
+                then: {
+                    do: 'wander',
+                    reason: 'unassigned',
+                    repeat: {whileCode: OK},
+                },
             };
             return {
                 ok: true,
@@ -288,9 +290,6 @@ class Agent {
      */
     execCreepTask(creep, task) {
         if (typeof task == 'function') return task();
-        const {deadline} = task;
-        if (deadline != null && deadline < Game.time)
-            return resolveTaskThen(task, {ok: false, reason: 'deadline expired', deadline});
 
         if ('do' in task)
             return this.execCreepAction(creep, task);
@@ -318,6 +317,26 @@ class Agent {
                 task.then = makeTaskThen(subTask, fail);
             }
             return resolveThen(fail && {fail}, res);
+        }
+
+        if ('timeout' in task) {
+            const {timeout, ...rest} = task;
+            const deadline = Game.time + timeout;
+            task = {deadline, ...rest};
+        }
+
+        if ('deadline' in task) {
+            const {deadline, then} = task;
+            const {ok: under, fail} = unpackTaskThen(then);
+            if (deadline < Game.time) return {
+                ok: false, reason: 'deadline expired', deadline,
+                nextTask: fail,
+            };
+            const subRes = under && this.execCreepSubtask(creep, task, under);
+            if (!subRes) return null;
+            const {subTask, res} = subRes;
+            if (subTask) task.then = makeTaskThen(subTask, fail);
+            return res;
         }
 
         assertNever(task, 'invalid creep task');

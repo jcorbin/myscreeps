@@ -45,6 +45,7 @@ type Taskable = (
 type Task = (
     | ActionTask
     | TimedTask
+    | TimeoutTask
 );
 
 // TimedTask is a wrapper task that adds Game.time tracking around execution of
@@ -57,6 +58,13 @@ type TimedTask = {
     } | number; // alias provides init time
 } & TaskMeta;
 
+// TimeoutTask is a wrapper task that adds deadline tracking around its inner
+// then.ok task; if then.ok is not defined, TimeoutTask simply yields.
+type TimeoutTask = (
+    | {deadline: number} // absolute game time
+    | {timeout: number}  // relative to first executed tick
+) & TaskMeta;
+
 type ActionTask = (
     | BuildTask
     | HarvestTask
@@ -67,10 +75,6 @@ type ActionTask = (
 );
 
 type TaskMeta = Scored & {
-    // deadline is an optional future game tick after which this task should no
-    // longer execute
-    deadline?: number;
-
     // then specifies subsequent task(s) to be executed in relation to a
     // containing task's execution:
     // - an "ok" task to execute when the containing task succeeds
@@ -101,7 +105,8 @@ type TaskMeta = Scored & {
     //   modified) containing task replaces result.nextTask
     // - if the task terminates with a failure, execution continues to
     //   then.fail if defined
-    // - additional semantics may be added by the wrapper task, see TimedTask
+    // - additional semantics may be added by the wrapper task
+    // - for example see TimedTask and TimeoutTask
     then?: TaskThen;
 };
 
