@@ -339,6 +339,12 @@ class Agent {
             return res;
         }
 
+        if ('sleep' in task) {
+            if (typeof task.sleep == 'number') task.sleep = {until: Game.time + task.sleep};
+            else if ('ticks' in task.sleep) task.sleep = {until: Game.time + task.sleep.ticks};
+            return Game.time < task.sleep.until ? null : {ok: true, reason: 'woke'};
+        }
+
         assertNever(task, 'invalid creep task');
     }
 

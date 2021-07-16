@@ -44,6 +44,7 @@ type Taskable = (
 
 type Task = (
     | ActionTask
+    | SleepTask
     | TimedTask
     | TimeoutTask
 );
@@ -64,6 +65,15 @@ type TimeoutTask = (
     | {deadline: number} // absolute game time
     | {timeout: number}  // relative to first executed tick
 ) & TaskMeta;
+
+// SleepTask yields until a future time.
+type SleepTask = {
+    sleep: (
+        | {until: number} // absolute game time
+        | {ticks: number} // relative to first executed tick
+        | number // alias for {ticks: number}
+    );
+} & TaskMeta;
 
 type ActionTask = (
     | BuildTask
