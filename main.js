@@ -355,8 +355,65 @@ class Agent {
             return Game.time < task.sleep.until ? null : {ok: true, reason: 'woke'};
         }
 
+        if ('while' in task) return this.execCreepLoopTask(creep, task, task.while, null);
+        if ('until' in task) return this.execCreepLoopTask(creep, task, {not: task.until}, null);
+        if ('doWhile' in task) return this.execCreepLoopTask(creep, task, null, task.doWhile);
+        if ('doUntil' in task) return this.execCreepLoopTask(creep, task, null, {not: task.doUntil});
+
         assertNever(task, 'invalid creep task');
     }
+
+    /**
+     * @param {Creep} creep
+     * @param {LoopTask} loop
+     * @param {LoopPredicate|null} predicate
+     * @param {LoopDoPredicate|null} doPredicate
+     * @returns {TaskResult|null}
+     */
+    execCreepLoopTask(creep, loop, predicate, doPredicate) {
+        return this.execCreepTaskLoop(creep, loop, body => {
+
+            // // start a run of the body task if predicate is (still) ok:true or
+            // return predRes.ok
+            //     ? this.execCreepTaskable(creep, body)
+            //     : undefined;
+
+            // const predRes = this.execCreepTaskSub(creep, task, 'pred', predicate);
+            // if (predRes === undefined) return {ok: false, reason: 'unable to execute predicate'};
+            // if (!predRes || predRes.nextTask) return predRes; // predicate yields or continues
+
+        });
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {Task & TaskSub} task
+     * @param {(body: Task) => TaskResult|null|undefined} body
+     * @returns {TaskResult|null}
+     */
+    execCreepTaskLoop(creep, task, body) {
+        const res = this.execCreepTaskSub(creep, task,
+            'body', () => body(taskThenOk(task) || {sleep: 1}));
+        return res === undefined // loop done (predicate falsified)
+            ? {ok: true, reason: 'loop done', nextTask: taskThenFail(task)} // continue to then.fail or return a terminal result
+            : res; // loop continues or yields
+    }
+
+    // TODO for creep clauses
+    // if (code != OK || !task.repeat) {
+    //     const expected = task.repeat && task.repeat.untilCode;
+    //     const ok = code === OK || code === expected;
+    //     return resolveTaskThen(task, {ok, reason: `code ${code}`});
+    // }
+    // if (task.repeat.untilFull != null &&
+    //     creep.store.getFreeCapacity(task.repeat.untilFull) > 0
+    // ) return null;
+    // if (task.repeat.untilEmpty != null &&
+    //     creep.store.getUsedCapacity(task.repeat.untilEmpty) > 0
+    // ) return null;
+    // if (task.repeat.whileCode != null &&
+    //     code === task.repeat.whileCode
+    // ) return null;
 
     /**
      * @param {Creep} creep
@@ -418,25 +475,7 @@ class Agent {
             return null;
         }
 
-        if (code != OK || !task.repeat) {
-            const expected = task.repeat && task.repeat.untilCode;
-            const ok = code === OK || code === expected;
-            return resolveTaskThen(task, {code, ok, reason: `code ${code}`});
-        }
-
-        if (task.repeat.untilFull != null &&
-            creep.store.getFreeCapacity(task.repeat.untilFull) > 0
-        ) return null;
-
-        if (task.repeat.untilEmpty != null &&
-            creep.store.getUsedCapacity(task.repeat.untilEmpty) > 0
-        ) return null;
-
-        if (task.repeat.whileCode != null &&
-            code === task.repeat.whileCode
-        ) return null;
-
-        return resolveTaskThen(task, {code, ok: true, reason: `code ${code} (final)`});
+        return resolveTaskThen(task, {code, ok: code == OK, reason: `code ${code}`});
     }
 
     /**
@@ -522,12 +561,14 @@ class Agent {
                         const capScore = Math.min(1, cap / haveEnergy);
                         const distScore = distanceScore(creep.pos, struct.pos);
                         yield {
-                            do: 'transfer',
-                            targetId: struct.id,
-                            resourceType: RESOURCE_ENERGY,
-                            repeat: {
-                                untilEmpty: RESOURCE_ENERGY,
-                                untilCode: ERR_NOT_ENOUGH_RESOURCES,
+                            doUntil: {or: [
+                                {empty: RESOURCE_ENERGY},
+                                {code: ERR_NOT_ENOUGH_RESOURCES},
+                            ]},
+                            then: {
+                                do: 'transfer',
+                                targetId: struct.id,
+                                resourceType: RESOURCE_ENERGY,
                             },
                             scoreFactors: {
                                 capacity: capScore,
@@ -544,11 +585,13 @@ class Agent {
                 const contribScore = scoreContrib(haveEnergy, ctl.progress, ctl.progressTotal);
                 const iqScore = inverseQuadScore(ctl.ticksToDowngrade, creep.pos, ctl.pos);
                 yield {
-                    do: 'upgradeController',
-                    targetId: ctl.id,
-                    repeat: {
-                        untilEmpty: RESOURCE_ENERGY,
-                        untilCode: ERR_NOT_ENOUGH_RESOURCES,
+                    doUntil: {or: [
+                        {empty: RESOURCE_ENERGY},
+                        {code: ERR_NOT_ENOUGH_RESOURCES},
+                    ]},
+                    then: {
+                        do: 'upgradeController',
+                        targetId: ctl.id,
                     },
                     score: Math.max(contribScore, iqScore),
                 };
@@ -575,11 +618,13 @@ class Agent {
                 for (const site of this.find(creep.room, FIND_CONSTRUCTION_SITES)) {
                     const contribScore = scoreContrib(haveEnergy, site.progress, site.progressTotal);
                     yield {
-                        do: 'build',
-                        targetId: site.id,
-                        repeat: {
-                            untilEmpty: RESOURCE_ENERGY,
-                            untilCode: ERR_NOT_ENOUGH_RESOURCES,
+                        doUntil: {or: [
+                            {empty: RESOURCE_ENERGY},
+                            {code: ERR_NOT_ENOUGH_RESOURCES},
+                        ]},
+                        then: {
+                            do: 'build',
+                            targetId: site.id,
                         },
                         scoreFactors: {
                             contrib: contribScore, // TODO penalize distance?
@@ -592,9 +637,11 @@ class Agent {
                 // TODO rank all sources
                 const source = creep.pos.findClosestByRange(FIND_SOURCES_ACTIVE);
                 if (source) yield {
-                    do: 'harvest',
-                    targetId: source.id,
-                    repeat: {untilFull: RESOURCE_ENERGY},
+                    until: {full: RESOURCE_ENERGY},
+                    then: {
+                        do: 'harvest',
+                        targetId: source.id,
+                    },
                     score: 0.4, // TODO factor in availability
                 };
             }

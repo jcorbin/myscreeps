@@ -47,6 +47,7 @@ type Task = (
     | SleepTask
     | TimedTask
     | TimeoutTask
+    | LoopTask
 );
 
 // TimedTask is a wrapper task that adds Game.time tracking around execution of
@@ -166,17 +167,62 @@ type TaskResult = {
     nextTask?: Task;
 };
 
+// LoopTask runs its then.ok (body task) many times, breaking and continuing to
+// its then.fail task only after its predicate becomes false (resp true for
+// until loops).
+//
+// Loops with a do* predicate execute their body task at least once, and their
+// predicate is allowed to check result properties like ok and code. Other
+// loops like while and until may never run their body task, since they check
+// their predicate before every potential body execution.
+//
+// The until and doUntil loop prediates are conveniences equivalent to {while:
+// {not: ...}} and {doWhile: {not: ...}} respectively
+type LoopTask = {
+    rounds?: number; // counts body task instances
+} & (
+    | {while: LoopPredicate}
+    | {until: LoopPredicate}
+    | {doWhile: LoopDoPredicate}
+    | {doUntil: LoopDoPredicate}
+) & TaskMeta & TaskSub;
+
+type LoopPredicate = BooleanAlgebra<LoopClause | CreepClause>;
+type LoopDoPredicate = BooleanAlgebra<LoopClause | CreepClause | ResultClause>;
+
+// Loop predicate clauses that rely only on loop state.
+type LoopClause = (
+    | {minRounds: number}
+    | {maxRounds: number}
+);
+
+// Loop predicate clauses that may check result state, used only by do* family
+// loop that execute body before checking predicate.
+type ResultClause = (
+    | {ok: boolean}
+    | {code: ScreepsReturnCode}
+);
+
+// Loop predicate clauses that integrate with creep state.
+type CreepClause = (
+    | {full: ResourceConstant}
+    | {empty: ResourceConstant}
+);
+
+// A general boolean algebra for composing branch predicates from some base
+// clause type.
+type BooleanAlgebra<Clause> = (
+    | Clause
+    | {and: BooleanAlgebra<Clause>[]}
+    | {or: BooleanAlgebra<Clause>[]}
+    | {not: BooleanAlgebra<Clause>}
+);
+
 // DoTask represents concrete action that affects the shared world.
 // There are categorical limits concerning which actions may be concurrently
 // performed per-creep-tick; TODO afford such limits, see docs for now.
 type DoTask<Action extends string> = {
     do: Action;
-    repeat?: {
-        whileCode?: ScreepsReturnCode;
-        untilCode?: ScreepsReturnCode;
-        untilFull?: ResourceConstant;
-        untilEmpty?: ResourceConstant;
-    };
 } & TaskMeta;
 
 type TargetedTask<T extends RoomObject> = {
