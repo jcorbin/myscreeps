@@ -39,7 +39,7 @@ type Scored = {
 
 type Taskable = (
     | Task
-    | (() => TaskResult|null)
+    | (() => TaskResult|null|undefined)
 );
 
 type Task = (
@@ -110,13 +110,22 @@ type TaskMeta = Scored & {
     //   then branch"
     // - all concrete ActionTasks use normative semantics
     //
-    // Wrapper execution semantics are to run then.ok as a subordinate task:
+    // When executing a then-task subordinately (subtask execution), such
+    // execution may either happen in-place or on an instanced copy of the
+    // then-task: when executing in place, any sub-continuation tasks replace
+    // it; whereas instantiation first copies the task, allowing things like
+    // future re-runs of a then-task.
+    //
+    // Wrapper execution semantics are to run then.ok as an in-place subtask:
     // - if the task continues, its nextTask replaces then.ok, and the (newly
     //   modified) containing task replaces result.nextTask
     // - if the task terminates with a failure, execution continues to
     //   then.fail if defined
     // - additional semantics may be added by the wrapper task
     // - for example see TimedTask and TimeoutTask
+    //
+    // On the other hand looping tasks run then.ok as an instanced subtask, 0 or
+    // more times, before continuing to their then.fail task.
     then?: TaskThen;
 };
 
@@ -126,6 +135,13 @@ type TaskThen = (
     | {fail: Task}
     | {ok: Task; fail: Task}
 );
+
+// TaskSub provides standardized storage for instanced sub-tasks, typically
+// populated from TaskMeta.then task data; see TaskMeta.then above for detail
+// on how this may be used.
+type TaskSub = {
+    sub?: {[name: string]: Task};
+};
 
 // TaskResult represents completion of a Task, successful or failed.
 type TaskResult = {

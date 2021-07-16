@@ -289,6 +289,16 @@ class Agent {
      * @returns {TaskResult|null}
      */
     execCreepTask(creep, task) {
+        // TODO eliminate this wrapper
+        return this.execCreepTaskable(creep, task) || null;
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {Taskable} task
+     * @returns {TaskResult|null|undefined}
+     */
+    execCreepTaskable(creep, task) {
         if (typeof task == 'function') return task();
 
         if ('do' in task)
@@ -351,18 +361,42 @@ class Agent {
     /**
      * @param {Creep} creep
      * @param {Task} task
-     * @param {Task} subTask
-     * @returns {{subTask: Task, res: null}|{subTask: Task|null, res: TaskResult}|null}
+     * @param {Taskable} subTask
+     * @returns {{subTask: Task, res: null}|{subTask: Task|null, res: TaskResult}|null|undefined}
      */
     execCreepSubtask(creep, task, subTask) {
-        const subRes = this.execCreepTask(creep, subTask);
+        const subRes = this.execCreepTaskable(creep, subTask);
         if (!subRes) {
+            if (typeof subTask == 'function') return subRes; // subtask init yielded
             return {subTask, res: null};
         }
         const {nextTask: nextSubTask, ...subFin} = subRes;
         return nextSubTask
             ? {subTask: nextSubTask, res: {nextTask: task, ...subFin}}
             : {subTask: null, res: subFin};
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {Task & TaskSub} task
+     * @param {string} name
+     * @param {Taskable} [init]
+     * @returns {TaskResult|null|undefined}
+     */
+    execCreepTaskSub(creep, task, name, init) {
+        const sub = task.sub && task.sub[name] || init;
+        if (!sub) return undefined;
+        const subRes = this.execCreepSubtask(creep, task, sub);
+        if (!subRes) return subRes;
+        const {subTask, res} = subRes;
+        if (subTask) {
+            if (!task.sub) task.sub = {};
+            task.sub[name] = subTask;
+        } else if (task.sub) {
+            delete task.sub[name];
+            if (!Object.keys(task.sub).length) delete task.sub;
+        }
+        return res;
     }
 
     /**
