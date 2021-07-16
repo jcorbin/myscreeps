@@ -41,6 +41,11 @@ type Scored = {
     score?: number;
 };
 
+type Taskable = (
+    | Task
+    | (() => TaskResult|null)
+);
+
 type Task = (
     | ActionTask
 );

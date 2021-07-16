@@ -220,22 +220,22 @@ class Agent {
         if (spawning) return false;
         const debugLevel = this.debugLevel('creepTasks', creep);
 
-        let task = memory.task;
-        if (!task) {
+        const res = this.execCreepTask(creep, memory.task || (() => {
             const newTask = this.chooseCreepTask(creep) || {
                 do: 'wander',
                 reason: 'unassigned',
                 repeat: {whileCode: OK},
                 deadline: Game.time + wanderFor * (0.5 + Math.random()),
             };
-            memory.task = task = {
-                assignTime: Game.time,
-                ...newTask,
+            return {
+                ok: true,
+                reason: 'creep task init',
+                nextTask: {
+                    assignTime: Game.time,
+                    ...newTask,
+                },
             };
-        }
-        // logCreep('🙋', name, JSON.stringify(task));
-
-        const res = this.execCreepTask(creep, task);
+        }));
 
         // task yields
         if (!res) {
@@ -245,15 +245,15 @@ class Agent {
         // task continues...
         const {nextTask} = res;
         if (nextTask) {
-            const {assignTime} = task;
-            task = {...nextTask, assignTime};
-            memory.task = task;
-            if (debugLevel > 0) logCreep('⏭', name, JSON.stringify(task));
+            const {assignTime=Game.time} = memory.task || {};
+            memory.task = {...nextTask, assignTime};
+            if (debugLevel > 0) logCreep('⏭', name, JSON.stringify(nextTask));
             return true;
         }
 
         // task done
         if (debugLevel > 0) {
+            const {task} = memory;
             if (res.ok) {
                 logCreep('✅', name, JSON.stringify(task));
             } else if (res.deadline != null) {
@@ -284,10 +284,11 @@ class Agent {
 
     /**
      * @param {Creep} creep
-     * @param {Task} task
+     * @param {Taskable} task
      * @returns {TaskResult|null}
      */
     execCreepTask(creep, task) {
+        if (typeof task == 'function') return task();
         const {deadline} = task;
         if (deadline != null && deadline < Game.time) {
             return {ok: false, reason: 'deadline expired', deadline};
