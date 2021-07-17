@@ -296,6 +296,9 @@ class Agent {
             task = {deadline, ...rest};
         }
 
+        // TODO may need ability for a continue result to cancel a deadline...
+        // maybe timeout/deadline is just "one-shot" then?
+
         if ('deadline' in task) {
             const {deadline, then} = task;
             const {ok: under, fail} = unpackTaskThen(then);
