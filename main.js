@@ -231,8 +231,8 @@ class Agent {
                 ok: true,
                 reason: 'creep task init',
                 nextTask: {
-                    assignTime: Game.time,
-                    ...newTask,
+                    time: Game.time,
+                    then: newTask,
                 },
             };
         }));
@@ -245,8 +245,7 @@ class Agent {
         // task continues...
         const {nextTask} = res;
         if (nextTask) {
-            const {assignTime=Game.time} = memory.task || {};
-            memory.task = {...nextTask, assignTime};
+            memory.task = nextTask;
             if (debugLevel > 0) logCreep('⏭', name, JSON.stringify(nextTask));
             return true;
         }
@@ -292,9 +291,53 @@ class Agent {
         const {deadline} = task;
         if (deadline != null && deadline < Game.time)
             return resolveTaskThen(task, {ok: false, reason: 'deadline expired', deadline});
+
         if ('do' in task)
             return this.execCreepAction(creep, task);
+
+        if ('time' in task) {
+            const exec = Game.time;
+            /** @type {TaskResult|null} */
+            let yld = null;
+            if (typeof task.time == 'number') {
+                const init = task.time;
+                task.time = {init, cont: init, exec};
+                yld = {ok: true, reason: 'time init', nextTask: task};
+            }
+
+            const {ok: under, fail} = unpackTaskThen(task.then);
+            if (!under) return yld;
+
+            task.time.exec = exec;
+            const subRes = this.execCreepSubtask(creep, task, under);
+            if (!subRes) return yld;
+
+            const {subTask, res} = subRes;
+            if (subTask) {
+                task.time.cont = exec;
+                task.then = makeTaskThen(subTask, fail);
+            }
+            return resolveThen(fail && {fail}, res);
+        }
+
         assertNever(task, 'invalid creep task');
+    }
+
+    /**
+     * @param {Creep} creep
+     * @param {Task} task
+     * @param {Task} subTask
+     * @returns {{subTask: Task, res: null}|{subTask: Task|null, res: TaskResult}|null}
+     */
+    execCreepSubtask(creep, task, subTask) {
+        const subRes = this.execCreepTask(creep, subTask);
+        if (!subRes) {
+            return {subTask, res: null};
+        }
+        const {nextTask: nextSubTask, ...subFin} = subRes;
+        return nextSubTask
+            ? {subTask: nextSubTask, res: {nextTask: task, ...subFin}}
+            : {subTask: null, res: subFin};
     }
 
     /**

@@ -13,7 +13,7 @@ interface Memory {
 interface CreepMemory {
     lastActed?: number
     debug: DebugLevel;
-    task?: AssignedTask;
+    task?: Task;
 }
 
 interface PowerCreepMemory {
@@ -32,10 +32,6 @@ interface FlagMemory {
     debug: DebugLevel;
 }
 
-type AssignedTask = Task & {
-    assignTime: number;
-};
-
 type Scored = {
     scoreFactors?: {[name: string]: number};
     score?: number;
@@ -48,7 +44,18 @@ type Taskable = (
 
 type Task = (
     | ActionTask
+    | TimedTask
 );
+
+// TimedTask is a wrapper task that adds Game.time tracking around execution of
+// its inner then.ok task; if then.ok is not defined, TimedTask simply yields.
+type TimedTask = {
+    time: {
+        init: number; // task creation time
+        cont: number; // last continue time
+        exec: number; // last execution time
+    } | number; // alias provides init time
+} & TaskMeta;
 
 type ActionTask = (
     | BuildTask
@@ -88,6 +95,13 @@ type TaskMeta = Scored & {
     //   appropriate then choice; i.e. "execution may continue to a relevant
     //   then branch"
     // - all concrete ActionTasks use normative semantics
+    //
+    // Wrapper execution semantics are to run then.ok as a subordinate task:
+    // - if the task continues, its nextTask replaces then.ok, and the (newly
+    //   modified) containing task replaces result.nextTask
+    // - if the task terminates with a failure, execution continues to
+    //   then.fail if defined
+    // - additional semantics may be added by the wrapper task, see TimedTask
     then?: TaskThen;
 };
 
