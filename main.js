@@ -457,11 +457,20 @@ class Agent {
                 time: Game.time,
                 then: {
                     think: 'seek',
-                    then: {
-                        fail: {do: 'wander', reason: 'idle'},
-                    },
+                    then: {fail: {
+                        timeout: 30,
+                        then: {do: 'wander', reason: 'idle'},
+                    }},
                 },
             },
+            // TODO then: {fail: {dispose: 'wandered too long'}},
+            // TODO failed wander leads to suicide
+            // ; should this just be same dispose as wander deadline?
+            // ; would need to add `code?: ScreepsReturnCode` to TaskResult
+            // if (code === ERR_NO_BODYPART) {
+            //     this.killCreep(creep, 'unable to move');
+            //     return null; // leave task on zombie
+            // }
         };
     }
 
