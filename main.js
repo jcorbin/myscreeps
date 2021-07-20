@@ -372,11 +372,16 @@ class Agent {
      */
     execCreepLoopTask(creep, loop, predicate, doPredicate) {
         return this.execCreepTaskLoop(creep, loop, body => {
+            // TODO break if not predicate()
+
+            // TODO bodyRes = body()
 
             // // start a run of the body task if predicate is (still) ok:true or
             // return predRes.ok
             //     ? this.execCreepTaskable(creep, body)
             //     : undefined;
+
+            // TODO break if !doPredicate(bodyRes)
 
             // const predRes = this.execCreepTaskSub(creep, task, 'pred', predicate);
             // if (predRes === undefined) return {ok: false, reason: 'unable to execute predicate'};
