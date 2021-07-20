@@ -311,23 +311,18 @@ class Agent {
         creep.memory.lastActed = Game.time;
 
         const {code, target} = this.dispatchCreepAction(creep, task);
-        switch (code) {
 
-        case ERR_INVALID_TARGET:
-            return {ok: false, reason: 'target gone'};
-
-        case ERR_NOT_IN_RANGE:
+        // TODO decouple into a wrapper/loop task?
+        if (code === ERR_NOT_IN_RANGE) {
             if (!target) return {ok: false, reason: 'no target'};
             creep.moveTo(target);
             return null;
-
-        // TODO other forms of pre-error handling
         }
 
         if (code != OK || !task.repeat) {
             const expected = task.repeat && task.repeat.untilCode;
             const ok = code === OK || code === expected;
-            return {ok, reason: `code ${code}`};
+            return {code, ok, reason: `code ${code}`};
         }
 
         if (task.repeat.untilFull != null &&
@@ -342,7 +337,7 @@ class Agent {
             code === task.repeat.whileCode
         ) return null;
 
-        return {ok: true, reason: `code ${code} (final)`};
+        return {code, ok: true, reason: `code ${code} (final)`};
     }
 
     /**

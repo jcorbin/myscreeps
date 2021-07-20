@@ -74,6 +74,8 @@ type TaskResult = {
     // successful results.
     reason: string;
 
+    code?: ScreepsReturnCode;
+
     // deadline, if defined, indicates that this (presumably failed) result was
     // due to an expired deadline. This field is meaningless if set on an
     // ok=true result, and also redundant, since the producer can just as well
