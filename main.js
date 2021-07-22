@@ -1021,6 +1021,56 @@ function taskTargetId(task) {
 }
 
 /**
+ * @param {Task} task
+ * @returns {{resourceType: ResourceConstant, takes?: number}|null}
+ */
+function taskConsumes(task) {
+    if (!('do' in task)) return null;
+    switch (task.do) {
+        case 'build':
+            return {resourceType: RESOURCE_ENERGY/* TODO take: progressTotal - progress */};
+        case 'transfer':
+            return {resourceType: task.resourceType, takes: task.amount};
+        case 'upgradeController':
+            return {resourceType: RESOURCE_ENERGY};
+
+        case 'harvest':
+        case 'pickup':
+        case 'wander':
+            return null;
+
+        default:
+            assertNever(task, 'unknown do task provides');
+    }
+}
+
+/**
+ * @param {Task} task
+ * @returns {{resourceType: ResourceConstant, avail?: number}|null}
+ */
+function taskProvides(task) {
+    if (!('do' in task)) return null;
+    switch (task.do) {
+        case 'harvest':
+            const target = Game.getObjectById(task.targetId);
+            if (target instanceof Source) return {resourceType: RESOURCE_ENERGY, avail: target.energy};
+            if (target instanceof Deposit) return {resourceType: target.depositType};
+            if (target instanceof Mineral) return {resourceType: target.mineralType, avail: target.mineralAmount};
+            return null;
+
+        case 'build':
+        case 'pickup':
+        case 'transfer':
+        case 'upgradeController':
+        case 'wander':
+            return null;
+
+        default:
+            assertNever(task, 'unknown do task provides');
+    }
+}
+
+/**
  * @template {string} T
  * @param {undefined|number|ReqSpecs<T>} spec
  * @param {number} [dflt]
